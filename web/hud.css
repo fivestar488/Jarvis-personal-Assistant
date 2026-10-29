@@ -42,12 +42,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
   -webkit-mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%);
 }
 .scanlines { background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .22) 0 1px, transparent 1px 3px); opacity: .45; z-index: 50; }
+/* A faint hologram scan sweeping down behind the panels */
 .scanbar {
-  height: 120px; inset: auto 0 auto 0; top: -120px; z-index: 51;
-  background: linear-gradient(transparent, rgba(63, 200, 255, .05), transparent);
-  animation: scan 9s linear infinite;
+  height: 220px; inset: auto 0 auto 0; top: -220px; z-index: 0;
+  background: linear-gradient(transparent, rgba(63, 200, 255, .025), transparent);
+  animation: scan 16s linear infinite;
 }
-@keyframes scan { to { transform: translateY(calc(100vh + 240px)); } }
+@keyframes scan { to { transform: translateY(calc(100vh + 440px)); } }
 
 /* ---------- boot ---------- */
 #boot {

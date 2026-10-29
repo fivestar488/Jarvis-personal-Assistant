@@ -8,6 +8,8 @@ import argparse
 import datetime as dt
 import os
 import re
+import socket
+import subprocess
 import sys
 import threading
 import webbrowser
@@ -168,6 +170,22 @@ def voice_mode():
                     command = None
 
 
+def open_hud(url):
+    """Open the HUD as its own app window in Edge or Chrome (their voice recognition works; Opera's and Firefox's don't).
+    Falls back to the default browser."""
+    for path in (
+        r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe",
+        r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe",
+        r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
+        r"%LocalAppData%\Google\Chrome\Application\chrome.exe",
+    ):
+        exe = os.path.expandvars(path)
+        if os.path.exists(exe):
+            subprocess.Popen([exe, f"--app={url}", "--window-size=1600,900"])
+            return
+    webbrowser.open(url)
+
+
 def hud_mode(port, open_browser):
     import qrcode
     import uvicorn
@@ -175,6 +193,11 @@ def hud_mode(port, open_browser):
 
     key = server.access_key()
     local_url = f"http://localhost:{port}/?key={key}"
+    with socket.socket() as s:
+        if s.connect_ex(("127.0.0.1", port)) == 0:  # Jarvis is already running: just bring the window back
+            console.print("[cyan]Jarvis is already running. Reopening the HUD window...[/]")
+            open_hud(local_url)
+            return
     phone_url = f"http://{server.lan_ip()}:{port}/?key={key}"
     console.print(f"\n[bold cyan]HUD online[/]  →  {local_url}")
     console.print(f"[bold cyan]Phone, same Wi-Fi[/]  →  {phone_url}")
@@ -189,7 +212,7 @@ def hud_mode(port, open_browser):
     console.print("[dim]If Windows Firewall asks about Python, allow it on Private networks so your phone can connect.\n"
                   "Keep the access link private: anyone with it can control this PC. Ctrl+C to shut down.[/]\n")
     if open_browser:
-        threading.Timer(1.5, webbrowser.open, args=(local_url,)).start()
+        threading.Timer(1.5, open_hud, args=(local_url,)).start()
     uvicorn.run(server.app, host="0.0.0.0", port=port, log_level="warning")
 
 

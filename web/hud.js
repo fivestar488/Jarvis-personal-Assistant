@@ -252,6 +252,7 @@ function send(obj) {
 function submit(text) {
   text = text.trim();
   if (!text) return;
+  cancelCapture();
   initAudio();
   if (send({ type: "message", text })) {
     blip(1200, 0.05);
@@ -347,7 +348,7 @@ function startListening(mode) {
   const r = new SR();
   r.lang = navigator.language || "en-GB";
   r.interimResults = true;
-  r.continuous = mode === "hands";
+  r.continuous = true;  // keep going through pauses; we decide when you've finished (see capture below)
   r.mode = mode;
   r.onresult = (e) => {
     let final = "", interim = "";
@@ -361,19 +362,72 @@ function startListening(mode) {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       handsFree = false; updateToggles();
       addActivity("Microphone access was blocked.", true);
+    } else if (e.error === "network") {
+      // Browsers like Opera expose the speech API but have no speech service behind it.
+      handsFree = false; updateToggles();
+      const msg = "Voice input doesn't work in this browser. Open Jarvis in Edge or Chrome, or type instead.";
+      addActivity(msg, true);
+      showSubtitle(msg, true);
     }
   };
   r.onend = () => {
     if (rec !== r) return;  // replaced or stopped on purpose
     rec = null;
     micBtn.classList.remove("active");
+    if (capture) {
+      // The browser stopped listening while you were mid-command.
+      if (mode === "ptt") sendCapture();
+      else { startListening("hands"); return; }  // hands-free: pick straight back up and keep collecting
+    }
     if (state === "listening") setState("idle");
     const resume = () => handsFree && !rec && (state === "idle" || state === "speaking");
     if (resume()) setTimeout(() => { if (resume()) startListening("hands"); }, 300);
   };
   rec = r;
   try { r.start(); } catch { rec = null; return; }
-  if (mode === "ptt") { micBtn.classList.add("active"); setState("listening"); showSubtitle("Listening...", true); }
+  if (mode === "ptt") { micBtn.classList.add("active"); if (!capture) startCapture(""); }
+}
+
+// ---------- collecting a spoken command ----------
+// Browsers split speech into chunks at every little pause. Instead of sending the first chunk,
+// we keep adding chunks and only send once you've been quiet for SILENCE_MS.
+const SILENCE_MS = 2200;      // how long you can pause mid-sentence without being cut off
+const FIRST_WORDS_MS = 7000;  // after "Jarvis" alone (or tapping the mic), how long to wait for you to start
+let capture = null;           // { text, timer } while a command is being collected
+
+function startCapture(initial, prompt = "Listening...") {
+  capture = { text: initial.trim(), timer: null };
+  setState("listening");
+  armCapture(capture.text ? SILENCE_MS : FIRST_WORDS_MS);
+  showCapture("", prompt);
+}
+function armCapture(ms) {
+  clearTimeout(capture.timer);
+  capture.timer = setTimeout(sendCapture, ms);
+}
+function feedCapture(final, interim) {
+  if (final) capture.text = (capture.text + " " + final).trim();
+  showCapture(interim);
+  armCapture(capture.text || interim ? SILENCE_MS : FIRST_WORDS_MS);
+}
+function showCapture(interim, prompt = "Listening...") {
+  const live = (capture.text + " " + (interim || "")).trim();
+  input.value = live;
+  showSubtitle(live || prompt, true);
+}
+function sendCapture() {
+  if (!capture) return;
+  clearTimeout(capture.timer);
+  const text = capture.text.replace(/^[\s,.!?]+|[\s,.!?]+$/g, "");
+  capture = null;
+  if (text) submit(text);
+  else {
+    if (rec && rec.mode === "ptt") stopListening();
+    if (state === "listening") setState("idle");
+  }
+}
+function cancelCapture() {
+  if (capture) { clearTimeout(capture.timer); capture = null; }
 }
 
 function stopListening() {
@@ -384,8 +438,8 @@ function stopListening() {
 }
 
 function onPushToTalk(final, interim) {
-  input.value = final || interim;
-  if (final) submit(final);
+  if (!capture) startCapture("");
+  feedCapture(final, interim);
 }
 
 const STOP_RE = /^\s*(?:ok(?:ay)? )?(stop|wait|hold on|quiet|enough|cancel|shut up|be quiet)\b/i;
@@ -410,6 +464,11 @@ function onHandsFree(final, interim) {
     addActivity("Interrupted.", true);
     if (!final) { showSubtitle(text, true); return; }
   }
+  if (capture) {
+    // Mid-command: everything you say counts until you pause.
+    feedCapture(final.replace(wakeRe(), " "), interim);
+    return;
+  }
   if (final && STOP_RE.test(final) && !wakeRe().test(final)) {
     followUpUntil = 0;
     setState("idle");
@@ -422,10 +481,10 @@ function onHandsFree(final, interim) {
   }
   if (wakeRe().test(final)) {
     const command = final.replace(wakeRe(), " ").replace(/^[\s,.!?]+|[\s,.!?]+$/g, "");
-    if (command) submit(command);
-    else { followUpUntil = Date.now() + 7000; setState("listening"); showSubtitle("Yes?"); blip(1000, 0.06); }
+    if (!command) blip(1000, 0.06);
+    startCapture(command, "Yes?");
   } else if (awaiting && final.trim()) {
-    submit(final);
+    startCapture(final);
   } else if (state === "listening") {
     setState("idle");
   }
@@ -435,7 +494,7 @@ micBtn.onclick = () => {
   initAudio();
   if (!canListen) { input.focus(); return; }
   if (currentSrc) stopAudio();
-  if (rec && rec.mode === "ptt") { stopListening(); setState("idle"); return; }
+  if (capture) { sendCapture(); return; }  // tap again while talking = send now, don't wait for the pause
   startListening("ptt");
 };
 
