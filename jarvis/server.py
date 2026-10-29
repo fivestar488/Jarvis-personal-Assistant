@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, tools
+from . import config, feeds, google_tools, tools
 from .brain import Brain
 from .voice import synthesize
 
@@ -25,12 +25,14 @@ WEB_DIR = config.ROOT / "web"
 KEY_FILE = config.DATA_DIR / "access_key.txt"
 RESET_PHRASES = {"reset", "new conversation", "start over", "new session"}
 
+
 @asynccontextmanager
 async def lifespan(_app):
     global loop, brain
     loop = asyncio.get_running_loop()
     tools.ui = HudInterface()
     brain = Brain(mode="hud", on_status=lambda s: from_thread(broadcast({"type": "status", "text": s})))
+    tools.start_reminders()
     yield
 
 
@@ -39,6 +41,7 @@ app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 clients: dict[str, WebSocket] = {}
 pending_confirms: dict[str, concurrent.futures.Future] = {}
+held_announcements: list[str] = []  # reminders that fired while no screen was connected
 loop: asyncio.AbstractEventLoop | None = None
 brain: Brain | None = None
 busy = asyncio.Lock()
@@ -57,6 +60,23 @@ def lan_ip():
             return s.getsockname()[0]
     except OSError:
         return "127.0.0.1"
+
+
+def tailscale_ip():
+    """This PC's Tailscale address, if Tailscale is installed and connected (lets your phone reach Jarvis from anywhere)."""
+    import shutil
+    import subprocess
+    exe = shutil.which("tailscale") or r"C:\Program Files\Tailscale\tailscale.exe"
+    try:
+        out = subprocess.run([exe, "ip", "-4"], capture_output=True, text=True, timeout=5).stdout.strip()
+        return out.splitlines()[0] if out else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def check_key(key):
+    if key != access_key():
+        raise HTTPException(403)
 
 
 async def broadcast(event):
@@ -108,6 +128,9 @@ class HudInterface:
 
     def announce(self, text):
         async def send():
+            if not clients:
+                held_announcements.append(text)  # delivered when a screen next connects
+                return
             await broadcast({"type": "announce", "text": text, "audio": await voice_for(text)})
         from_thread(send())
 
@@ -134,10 +157,38 @@ async def manifest():
     return FileResponse(WEB_DIR / "manifest.webmanifest", media_type="application/manifest+json")
 
 
+@app.get("/api/weather")
+async def weather(key: str):
+    check_key(key)
+    try:
+        return await asyncio.to_thread(feeds.weather)
+    except Exception as e:
+        raise HTTPException(503, str(e))
+
+
+@app.get("/api/news")
+async def news(key: str):
+    check_key(key)
+    return {"items": await asyncio.to_thread(feeds.headlines)}
+
+
+@app.get("/api/calendar")
+async def calendar(key: str):
+    """Today's and tomorrow's events for the HUD timeline."""
+    check_key(key)
+    if not google_tools.connected():
+        return {"connected": False, "events": []}
+    start = dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        events = await asyncio.to_thread(google_tools.list_events, start, start + dt.timedelta(days=2))
+    except google_tools.NotConnected as e:
+        return {"connected": False, "events": [], "error": str(e)}
+    return {"connected": True, "events": events}
+
+
 @app.get("/api/stats")
 async def stats(key: str):
-    if key != access_key():
-        raise HTTPException(403)
+    check_key(key)
     battery = psutil.sensors_battery()
     disk = psutil.disk_usage("C:/")
     return {
@@ -160,6 +211,9 @@ async def websocket(ws: WebSocket, key: str = ""):
     client_id = uuid.uuid4().hex
     clients[client_id] = ws
     await ws.send_json({"type": "hello", "id": client_id, "user": config.USER_NAME, "wake_words": config.WAKE_WORDS})
+    while held_announcements:
+        text = held_announcements.pop(0)
+        await ws.send_json({"type": "announce", "text": text, "audio": await voice_for(text)})
     try:
         while True:
             event = await ws.receive_json()

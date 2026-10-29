@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -295,10 +296,36 @@ def take_screenshot(look=True):
     img.thumbnail((1568, 1568))
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="JPEG", quality=80)
+    return _image_result(buf.getvalue(), f"Screenshot saved to {file}.")
+
+
+def _image_result(jpeg, note):
     return [
-        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(buf.getvalue()).decode()}},
-        {"type": "text", "text": f"Screenshot saved to {file}."},
+        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(jpeg).decode()}},
+        {"type": "text", "text": note},
     ]
+
+
+@tool("Look through the PC's webcam and see what's in front of it. Use when the user asks what you can see, "
+      "what he's holding, how he looks, who's there, etc.")
+def look_through_camera():
+    import cv2
+    cam = cv2.VideoCapture(config.CAMERA_INDEX, cv2.CAP_DSHOW)
+    try:
+        if not cam.isOpened():
+            return "Couldn't open the webcam. It may be in use by another app, or blocked in Windows privacy settings."
+        ok, frame = False, None
+        for _ in range(10):  # the first frames are dark while auto-exposure adjusts
+            ok, frame = cam.read()
+        if not ok:
+            return "The webcam didn't return an image."
+    finally:
+        cam.release()
+    h, w = frame.shape[:2]
+    if w > 1280:
+        frame = cv2.resize(frame, (1280, int(h * 1280 / w)))
+    _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    return _image_result(jpeg.tobytes(), "Webcam image captured just now.")
 
 
 @tool("Type text into whatever window currently has focus, as if typed on the keyboard.",
@@ -336,18 +363,108 @@ def set_clipboard(text):
 
 # ---------------------------------------------------------------- timers & reminders
 
-@tool("Set a timer or reminder. Jarvis will announce the message out loud when time is up.",
-      {"seconds": I("Delay in seconds from now"), "message": S("What to say, e.g. 'Your pizza is ready'")},
-      ["seconds", "message"])
-def set_reminder(seconds, message):
-    def fire():
-        if ui:
-            ui.announce(f"Reminder: {message}")
-    t = threading.Timer(seconds, fire)
-    t.daemon = True
-    t.start()
-    at = dt.datetime.now() + dt.timedelta(seconds=seconds)
-    return f"Reminder set for {at:%H:%M:%S}. (Reminders only fire while Jarvis is running.)"
+REMINDERS_FILE = config.DATA_DIR / "reminders.json"
+_reminder_lock = threading.Lock()
+_started_at = dt.datetime.now()
+_reminder_loop = None
+
+
+def _load_reminders():
+    if REMINDERS_FILE.exists():
+        return json.loads(REMINDERS_FILE.read_text(encoding="utf-8"))
+    return []
+
+
+def _save_reminders(items):
+    REMINDERS_FILE.write_text(json.dumps(items, indent=2), encoding="utf-8")
+
+
+@tool("Set a timer or reminder. Jarvis announces it out loud when it's due. Saved to disk, so it survives restarts. "
+      "Give either seconds from now, or an exact time.",
+      {"message": S("What to say, e.g. 'Your pizza is ready'"),
+       "seconds": I("Delay from now in seconds"),
+       "at": S("Exact local time: 'HH:MM' (next occurrence) or 'YYYY-MM-DDTHH:MM'")},
+      ["message"])
+def set_reminder(message, seconds=None, at=None):
+    now = dt.datetime.now()
+    if at:
+        if len(at) <= 5:
+            hour, minute = map(int, at.split(":"))
+            due = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if due <= now:
+                due += dt.timedelta(days=1)
+        else:
+            due = dt.datetime.fromisoformat(at)
+    elif seconds:
+        due = now + dt.timedelta(seconds=seconds)
+    else:
+        return "Give either seconds or at."
+    item = {"id": os.urandom(3).hex(), "due": due.isoformat(timespec="seconds"), "message": message}
+    with _reminder_lock:
+        _save_reminders(_load_reminders() + [item])
+    return f"Reminder set for {due:%A %d %b at %H:%M:%S} (id {item['id']})."
+
+
+@tool("List upcoming reminders.")
+def list_reminders():
+    items = sorted(_load_reminders(), key=lambda r: r["due"])
+    return "\n".join(f"[{r['id']}] {r['due'].replace('T', ' ')} — {r['message']}" for r in items) or "No reminders set."
+
+
+@tool("Cancel reminders by id, or by text contained in the message.", {"match": S("Reminder id or part of its message")}, ["match"])
+def cancel_reminder(match):
+    with _reminder_lock:
+        items = _load_reminders()
+        kept = [r for r in items if r["id"] != match and match.lower() not in r["message"].lower()]
+        _save_reminders(kept)
+    return f"Cancelled {len(items) - len(kept)} reminder(s)."
+
+
+def start_reminders():
+    """Background loop that announces due reminders, including any that came due while Jarvis was off."""
+    global _reminder_loop
+    if _reminder_loop:
+        return
+
+    def loop():
+        while True:
+            now = dt.datetime.now()
+            with _reminder_lock:
+                items = _load_reminders()
+                due = [r for r in items if dt.datetime.fromisoformat(r["due"]) <= now]
+                if due:
+                    _save_reminders([r for r in items if r not in due])
+            for r in due:
+                when = dt.datetime.fromisoformat(r["due"])
+                if ui and when < _started_at:
+                    ui.announce(f"While I was offline you had a reminder for {when:%A at %H:%M}: {r['message']}")
+                elif ui:
+                    ui.announce(f"Reminder: {r['message']}")
+            time.sleep(3)
+
+    _reminder_loop = threading.Thread(target=loop, daemon=True)
+    _reminder_loop.start()
+
+
+# ---------------------------------------------------------------- weather & news
+
+@tool("Current weather and 4-day forecast. Faster than web_search for weather. Defaults to the user's home location.",
+      {"place": S("Optional city or place name")})
+def get_weather(place=None):
+    from . import feeds
+    w = feeds.weather(place)
+    c, u = w["current"], w["units"]
+    lines = [f"{w['location']['name']}: {c['text']}, {c['temp']}{u['temp']} (feels like {c['feels']}{u['temp']}), "
+             f"humidity {c['humidity']}%, wind {c['wind']} {u['wind']}."]
+    for d in w["daily"]:
+        lines.append(f"{d['date']}: {d['text']}, high {d['high']}{u['temp']}, low {d['low']}{u['temp']}, rain chance {d['rain']}%")
+    return "\n".join(lines)
+
+
+@tool("Today's top news headlines from the user's news feeds.")
+def get_headlines():
+    from . import feeds
+    return "\n".join(f"- {h['title']} ({h['source']})" for h in feeds.headlines(15)) or "Couldn't load the news."
 
 
 # ---------------------------------------------------------------- memory & notes
@@ -390,3 +507,6 @@ def save_note(text):
 @tool("Read all of the user's saved notes.")
 def read_notes():
     return config.NOTES_FILE.read_text(encoding="utf-8") if config.NOTES_FILE.exists() else "No notes yet."
+
+
+from . import google_tools  # noqa: E402,F401  (registers the Gmail & Calendar tools)

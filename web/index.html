@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#01060b">
+<meta name="theme-color" content="#000308">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,6 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="/static/hud.css">
 </head>
 <body data-state="idle">
@@ -43,9 +44,14 @@
   </div>
 </header>
 
+<div class="ticker">
+  <span class="ticker-label"><i></i>LIVE</span>
+  <div class="ticker-track"><div id="ticker-items" class="ticker-items"><span class="tk">Loading headlines...</span></div></div>
+</div>
+
 <main class="hud">
   <aside class="panel left">
-    <section class="card">
+    <section class="card" data-card="system">
       <h2>System Diagnostics</h2>
       <div class="gauges">
         <div class="gauge" id="g-cpu"><svg viewBox="0 0 80 80"><circle class="track" cx="40" cy="40" r="34"/><circle class="val" cx="40" cy="40" r="34"/></svg><b>--</b><span>CPU</span></div>
@@ -61,7 +67,16 @@
         <div><dt>PROCESSES</dt><dd id="procs">--</dd></div>
       </dl>
     </section>
-    <section class="card grow">
+    <section class="card" data-card="weather">
+      <h2>Atmospherics</h2>
+      <div class="wx-now">
+        <div class="wx-temp" id="wx-temp">--&deg;</div>
+        <div class="wx-meta"><b id="wx-text">Scanning...</b><span id="wx-loc"></span><span id="wx-detail"></span></div>
+      </div>
+      <div id="radar" class="radar"><span class="radar-time" id="radar-time"></span></div>
+      <div class="wx-days" id="wx-days"></div>
+    </section>
+    <section class="card grow" data-card="activity">
       <h2>Activity</h2>
       <ol id="activity"></ol>
     </section>
@@ -73,18 +88,18 @@
         <defs>
           <radialGradient id="coreGrad">
             <stop offset="0" stop-color="#ffffff"/>
-            <stop offset=".35" stop-color="#d4f8ff"/>
-            <stop offset=".7" stop-color="#36e2ff" stop-opacity=".85"/>
-            <stop offset="1" stop-color="#36e2ff" stop-opacity="0"/>
+            <stop offset=".35" stop-color="#e4f7ff"/>
+            <stop offset=".7" stop-color="#3fc8ff" stop-opacity=".85"/>
+            <stop offset="1" stop-color="#3fc8ff" stop-opacity="0"/>
           </radialGradient>
           <radialGradient id="haloGrad">
-            <stop offset="0" stop-color="#36e2ff" stop-opacity=".45"/>
-            <stop offset=".55" stop-color="#36e2ff" stop-opacity=".08"/>
-            <stop offset="1" stop-color="#36e2ff" stop-opacity="0"/>
+            <stop offset="0" stop-color="#3fc8ff" stop-opacity=".45"/>
+            <stop offset=".55" stop-color="#3fc8ff" stop-opacity=".08"/>
+            <stop offset="1" stop-color="#3fc8ff" stop-opacity="0"/>
           </radialGradient>
           <linearGradient id="sweepGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stop-color="#ffb13b" stop-opacity="0"/>
-            <stop offset="1" stop-color="#ffb13b" stop-opacity=".45"/>
+            <stop offset="0" stop-color="#ff9a1f" stop-opacity="0"/>
+            <stop offset="1" stop-color="#ff9a1f" stop-opacity=".45"/>
           </linearGradient>
         </defs>
         <g transform="translate(200 200)">
@@ -114,8 +129,20 @@
     <div class="mini-stats" id="mini-stats"></div>
   </section>
 
+  <nav class="tabs" aria-label="Panels">
+    <button data-tab="comms">COMMS</button>
+    <button data-tab="agenda">AGENDA</button>
+    <button data-tab="weather">WEATHER</button>
+    <button data-tab="system">SYSTEM</button>
+    <button data-tab="activity">LOG</button>
+  </nav>
+
   <aside class="panel right">
-    <section class="card grow">
+    <section class="card agenda-card" data-card="agenda">
+      <h2>Agenda</h2>
+      <div id="agenda" class="agenda"><p class="agenda-empty">Loading calendar...</p></div>
+    </section>
+    <section class="card grow" data-card="comms">
       <h2>Comms Log</h2>
       <div id="log" class="log" aria-live="polite"></div>
     </section>
@@ -132,7 +159,8 @@
   </form>
   <div class="toggles">
     <button id="tg-voice" type="button" class="toggle on" title="Jarvis speaks his replies on this device">VOICE</button>
-    <button id="tg-hands" type="button" class="toggle" title="Always listening: say &quot;Jarvis, ...&quot;">HANDS-FREE</button>
+    <button id="tg-filter" type="button" class="toggle on" title="Suit filter: gives his voice the movie-style AI sound">FILTER</button>
+    <button id="tg-hands" type="button" class="toggle" title="Always listening: say &quot;Jarvis, ...&quot;. Say &quot;Jarvis&quot; or &quot;stop&quot; to interrupt him.">HANDS-FREE</button>
   </div>
 </footer>
 
@@ -154,6 +182,7 @@
   </div>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/static/hud.js"></script>
 </body>
 </html>

@@ -21,7 +21,7 @@ async def synthesize(text):
     """Text -> MP3 bytes in Jarvis's voice."""
     import edge_tts
     audio = bytearray()
-    async for chunk in edge_tts.Communicate(speakable(text), config.VOICE, rate="+5%").stream():
+    async for chunk in edge_tts.Communicate(speakable(text), config.VOICE, rate=config.VOICE_RATE, pitch=config.VOICE_PITCH).stream():
         if chunk["type"] == "audio":
             audio.extend(chunk["data"])
     return bytes(audio)

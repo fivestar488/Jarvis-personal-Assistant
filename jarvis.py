@@ -114,6 +114,7 @@ def text_mode(speak):
         mouth = Mouth()
     ui = Interface(mouth=mouth)
     tools.ui = ui
+    tools.start_reminders()
     brain = Brain(mode="voice" if speak else "text", on_status=lambda s: console.print(f"  [dim]⚙ {s}[/]"))
     ui.show(greeting())
     console.print("[dim]Type a command. 'reset' starts a new conversation, 'exit' quits.[/]\n")
@@ -133,6 +134,7 @@ def voice_mode():
         ears = Ears()
     ui = Interface(mouth=mouth, ears=ears)
     tools.ui = ui
+    tools.start_reminders()
     brain = Brain(mode="voice", on_status=lambda s: console.print(f"  [dim]⚙ {s}[/]"))
     ui.show(greeting())
     console.print(f"[dim]Say \"{config.WAKE_WORDS[0].title()}, ...\" to give a command. Say \"goodbye\" to quit. Ctrl+C also quits.[/]\n")
@@ -175,7 +177,11 @@ def hud_mode(port, open_browser):
     local_url = f"http://localhost:{port}/?key={key}"
     phone_url = f"http://{server.lan_ip()}:{port}/?key={key}"
     console.print(f"\n[bold cyan]HUD online[/]  →  {local_url}")
-    console.print(f"[bold cyan]On your phone[/] (same Wi-Fi)  →  {phone_url}")
+    console.print(f"[bold cyan]Phone, same Wi-Fi[/]  →  {phone_url}")
+    ts_ip = server.tailscale_ip()
+    if ts_ip:
+        phone_url = f"http://{ts_ip}:{port}/?key={key}"
+        console.print(f"[bold cyan]Phone, anywhere (Tailscale)[/]  →  {phone_url}")
     console.print("[dim]Scan this with your phone's camera. Then use 'Add to Home Screen' to get a JARVIS app icon.[/]")
     qr = qrcode.QRCode(border=1)
     qr.add_data(phone_url)
@@ -194,9 +200,16 @@ def main():
     parser.add_argument("--voice", action="store_true", help="hands-free voice mode in the terminal")
     parser.add_argument("--port", type=int, default=8765, help="HUD port (default 8765)")
     parser.add_argument("--no-browser", action="store_true", help="don't open the HUD automatically")
+    parser.add_argument("--connect-google", action="store_true", help="sign in to Gmail & Google Calendar")
     args = parser.parse_args()
 
     console.print(BANNER)
+    if args.connect_google:
+        from jarvis import google_tools
+        console.print("[cyan]Opening Google sign-in in your browser...[/]")
+        google_tools.connect()
+        console.print("[bold green]Gmail and Google Calendar connected.[/]")
+        return
     if not os.getenv("ANTHROPIC_API_KEY"):
         console.print("[bold red]No ANTHROPIC_API_KEY found.[/] Open the .env file and paste your key in "
                       "(get one at https://console.anthropic.com/settings/keys).")

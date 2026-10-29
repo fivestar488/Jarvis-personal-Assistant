@@ -22,6 +22,13 @@ EFFORT = os.getenv("JARVIS_EFFORT", "low")
 
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("JARVIS_WAKE_WORDS", "jarvis,jervis,javis,jarvas,travis").split(",")]
 VOICE = os.getenv("JARVIS_VOICE", "en-GB-RyanNeural")
+VOICE_RATE = os.getenv("JARVIS_VOICE_RATE", "+5%")     # speed, e.g. -5% or +10%
+VOICE_PITCH = os.getenv("JARVIS_VOICE_PITCH", "+0Hz")  # e.g. -3Hz for deeper
 WHISPER_MODEL = os.getenv("JARVIS_WHISPER_MODEL", "base.en")
+LOCATION = os.getenv("JARVIS_LOCATION", "")  # e.g. "Manchester". Blank = detect from your internet connection
+WEATHER_UNITS = os.getenv("JARVIS_WEATHER_UNITS", "metric")  # or "imperial"
+NEWS_FEEDS = [u.strip() for u in os.getenv("JARVIS_NEWS_FEEDS", "https://feeds.bbci.co.uk/news/rss.xml").split(",") if u.strip()]
+CAMERA_INDEX = int(os.getenv("JARVIS_CAMERA_INDEX", "0"))
+
 # Seconds Jarvis keeps listening for a follow-up after answering, without needing the wake word again.
 FOLLOW_UP_SECONDS = float(os.getenv("JARVIS_FOLLOW_UP_SECONDS", "6"))

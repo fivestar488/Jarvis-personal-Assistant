@@ -14,6 +14,12 @@ pyautogui
 pyperclip
 pillow
 
+# Gmail, Google Calendar, webcam
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+opencv-python
+
 # Voice
 edge-tts
 pygame
