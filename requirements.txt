@@ -1,0 +1,24 @@
+# Brain
+anthropic>=0.70
+python-dotenv
+rich
+
+# HUD (web interface, also works on your phone)
+fastapi
+uvicorn[standard]
+qrcode
+
+# PC control
+psutil
+pyautogui
+pyperclip
+pillow
+
+# Voice
+edge-tts
+pygame
+pyttsx3
+SpeechRecognition
+PyAudio
+faster-whisper
+numpy

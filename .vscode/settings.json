@@ -1,0 +1,3 @@
+{
+  "python.defaultInterpreterPath": "${env:LOCALAPPDATA}\\JarvisVenv\\Scripts\\python.exe"
+}
