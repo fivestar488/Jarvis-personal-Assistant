@@ -310,17 +310,21 @@ def _image_result(jpeg, note):
       "what he's holding, how he looks, who's there, etc.")
 def look_through_camera():
     import cv2
-    cam = cv2.VideoCapture(config.CAMERA_INDEX, cv2.CAP_DSHOW)
-    try:
-        if not cam.isOpened():
-            return "Couldn't open the webcam. It may be in use by another app, or blocked in Windows privacy settings."
-        ok, frame = False, None
-        for _ in range(10):  # the first frames are dark while auto-exposure adjusts
-            ok, frame = cam.read()
-        if not ok:
-            return "The webcam didn't return an image."
-    finally:
-        cam.release()
+    from . import security
+    if security.running() and security.latest_frame is not None:
+        frame = security.latest_frame  # security mode already has the camera open
+    else:
+        cam = cv2.VideoCapture(config.CAMERA_INDEX, cv2.CAP_DSHOW)
+        try:
+            if not cam.isOpened():
+                return "Couldn't open the webcam. It may be in use by another app, or blocked in Windows privacy settings."
+            ok, frame = False, None
+            for _ in range(10):  # the first frames are dark while auto-exposure adjusts
+                ok, frame = cam.read()
+            if not ok:
+                return "The webcam didn't return an image."
+        finally:
+            cam.release()
     h, w = frame.shape[:2]
     if w > 1280:
         frame = cv2.resize(frame, (1280, int(h * 1280 / w)))
@@ -435,11 +439,12 @@ def start_reminders():
                 if due:
                     _save_reminders([r for r in items if r not in due])
             for r in due:
+                from . import notify
                 when = dt.datetime.fromisoformat(r["due"])
-                if ui and when < _started_at:
-                    ui.announce(f"While I was offline you had a reminder for {when:%A at %H:%M}: {r['message']}")
-                elif ui:
-                    ui.announce(f"Reminder: {r['message']}")
+                if when < _started_at:
+                    notify.alert("Missed reminder", f"While I was offline you had a reminder for {when:%A at %H:%M}: {r['message']}")
+                else:
+                    notify.alert("Reminder", f"Reminder: {r['message']}")
             time.sleep(3)
 
     _reminder_loop = threading.Thread(target=loop, daemon=True)
@@ -509,4 +514,4 @@ def read_notes():
     return config.NOTES_FILE.read_text(encoding="utf-8") if config.NOTES_FILE.exists() else "No notes yet."
 
 
-from . import google_tools  # noqa: E402,F401  (registers the Gmail & Calendar tools)
+from . import google_tools, security, spotify_tools  # noqa: E402,F401  (registers their tools)

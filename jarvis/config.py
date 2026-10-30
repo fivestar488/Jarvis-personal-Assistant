@@ -16,6 +16,9 @@ LOG_FILE = DATA_DIR / "history.log"
 PORT = int(os.getenv("JARVIS_PORT", "8765"))
 HOTKEY = os.getenv("JARVIS_HOTKEY", "ctrl+alt+j")  # summons the HUD and starts listening, from any app
 NETWORK_CHECK_SECONDS = 5  # how often Jarvis checks whether the phone link changed (new Wi-Fi etc.)
+EMAIL_WATCH = os.getenv("JARVIS_EMAIL_WATCH", "on").lower() != "off"
+EMAIL_WATCH_MINUTES = float(os.getenv("JARVIS_EMAIL_WATCH_MINUTES", "5"))
+SPOTIFY_CLIENT_ID = os.getenv("JARVIS_SPOTIFY_CLIENT_ID", "")
 OWNER_NAME = os.getenv("JARVIS_OWNER", "Jake Young")
 USER_NAME = os.getenv("JARVIS_USER_NAME", "sir")  # how Jarvis addresses you
 THINKING_PHRASE = os.getenv("JARVIS_THINKING_PHRASE", "Thinking...")

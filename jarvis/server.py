@@ -12,11 +12,11 @@ import uuid
 from contextlib import asynccontextmanager
 
 import psutil
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, feeds, google_tools, network, tools
+from . import briefing, config, email_watch, feeds, google_tools, network, notify, security, tools
 from .brain import Brain
 from .voice import synthesize
 
@@ -32,6 +32,7 @@ async def lifespan(_app):
     tools.ui = HudInterface()
     brain = Brain(mode="hud", on_status=lambda s: from_thread(broadcast({"type": "status", "text": s})))
     tools.start_reminders()
+    email_watch.start()
     watcher = asyncio.create_task(watch_network())
     yield
     watcher.cancel()
@@ -62,22 +63,25 @@ def check_key(key):
 
 # ---------------------------------------------------------------- phone link
 
-phone_link = None        # the current {url, host, network, tailscale}, kept up to date by watch_network()
+phone_link = None        # the current {url, host, network, tailscale, secure}, kept up to date by watch_network()
 on_network_change = None  # set by jarvis.py to reprint the QR code in the console
 
 
 async def watch_network():
     """Every few seconds, check whether the phone link changed (new Wi-Fi, Tailscale on/off) and announce it."""
     global phone_link
+    first = True
     while True:
         link = await asyncio.to_thread(network.current_link, access_key())
-        if link != phone_link:
-            first = phone_link is None
+        if first or link != phone_link:
             phone_link = link
+            # Notifications can show pictures (security photos) only via the phone app's secure address.
+            notify.public_base_url = link["url"].split("/?")[0] if link and link["secure"] else None
             if not first:
                 await broadcast({"type": "network", **phone_payload()})
             if on_network_change:
                 on_network_change(link, first)
+            first = False
         await asyncio.sleep(config.NETWORK_CHECK_SECONDS)
 
 
@@ -142,6 +146,23 @@ class HudInterface:
                 return
             await broadcast({"type": "announce", "text": text, "audio": await voice_for(text)})
         from_thread(send())
+
+
+greeted_out_loud = False
+
+
+async def send_greeting(ws):
+    """Weather + agenda greeting. Spoken the first time Jarvis starts; later screens (your phone) just show it."""
+    global greeted_out_loud
+    text = await asyncio.to_thread(briefing.greeting)
+    audio = None
+    if not greeted_out_loud:
+        greeted_out_loud = True
+        audio = await voice_for(text)
+    try:
+        await ws.send_json({"type": "greeting", "text": text, "audio": audio})
+    except Exception:
+        pass
 
 
 def summon():
@@ -210,6 +231,37 @@ async def calendar(key: str):
     return {"connected": True, "events": events}
 
 
+@app.get("/api/push/key")
+async def push_key(key: str):
+    """Public key the phone needs to sign up for notifications."""
+    check_key(key)
+    return {"key": await asyncio.to_thread(notify.public_key)}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(key: str, request: Request):
+    check_key(key)
+    notify.subscribe(await request.json())
+    return {"ok": True}
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(key: str, request: Request):
+    check_key(key)
+    notify.unsubscribe((await request.json()).get("endpoint"))
+    return {"ok": True}
+
+
+@app.get("/api/snapshot/{name}")
+async def snapshot(name: str, key: str):
+    """Security-mode photos, shown inside phone notifications."""
+    check_key(key)
+    photo = security.SNAPSHOT_DIR / name
+    if photo.parent != security.SNAPSHOT_DIR or not photo.is_file():  # only files from the security folder
+        raise HTTPException(404)
+    return FileResponse(photo, media_type="image/jpeg")
+
+
 @app.get("/api/phone")
 async def phone(key: str):
     """The current phone link as a QR code."""
@@ -243,6 +295,7 @@ async def websocket(ws: WebSocket, key: str = ""):
     clients[client_id] = ws
     await ws.send_json({"type": "hello", "id": client_id, "user": config.USER_NAME, "wake_words": config.WAKE_WORDS,
                         "hotkey": config.HOTKEY})
+    asyncio.create_task(send_greeting(ws))
     while held_announcements:
         text = held_announcements.pop(0)
         await ws.send_json({"type": "announce", "text": text, "audio": await voice_for(text)})

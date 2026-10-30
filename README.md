@@ -25,7 +25,9 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 - **Interrupting**: in hands-free mode, say **"Jarvis…"** or **"stop"** while he's talking to cut him off. You can also tap the reactor.
 - **VOICE**: turns his spoken replies on or off for that device.
 - **FILTER**: the "suit filter" gives his voice the polished, slightly digital sound from the films.
-- **NEW SESSION** clears the conversation. Long-term memories are kept.
+- **NEW SESSION** clears the conversation, including the saved copy. Long-term memories are kept.
+- **Memory across restarts:** Jarvis saves your recent conversation, so after a restart he still knows what you were talking about.
+- **Startup greeting:** when Jarvis starts, he greets you out loud with the weather and what's left on today's calendar.
 - **Quick buttons** under the reactor: **BRIEFING, EMAILS, AGENDA, WEATHER, NEWS, SCREEN**. One click each.
 - **Ctrl+Alt+J** in any app brings up Jarvis and starts listening. Press it again to send straight away.
 - **THEME** switches between **MARK** (the suit's red and gold, with a blue arc reactor) and **JARVIS** (the blue hologram look).
@@ -58,6 +60,15 @@ Jarvis runs on your PC, and your phone connects to it privately through **Tailsc
 4. Tap **⋮ → Install app**, and choose **Install** (not "Create shortcut").
 5. Open **JARVIS** from your home screen. The first time you tap 🎤, allow the microphone.
 
+### Notifications on your phone
+
+In the JARVIS app, tap **ALERTS** (bottom right) and allow notifications. Your phone then gets:
+- **Reminders** when they're due
+- **Important emails**: Jarvis checks your inbox every 5 minutes and only alerts you about mail that matters, not newsletters or promos
+- **Security alerts** with a photo, when security mode spots movement
+
+Notifications arrive **even when the app is closed and Tailscale is off**. Tapping one opens JARVIS, which needs Tailscale on. Tap **ALERTS** again to turn them off.
+
 ### Using it
 
 - Tailscale only needs to be **on while you use Jarvis**. Turn it on or off from the Tailscale app's switch, its notification, or a Quick Settings tile. With it off, the app shows OFFLINE.
@@ -79,6 +90,17 @@ Jarvis talks to Google directly, so he needs his own key from Google:
 
 You can then say "What's on my calendar today?", "Any important emails?", "Draft a reply to Sarah saying I'll be late", or "Give me my morning briefing".
 
+## Connect Spotify (optional, about 5 minutes)
+
+Without this, Jarvis can still tell you what's playing and pause or skip. Connecting lets him play songs, artists, playlists and your Liked Songs on request, like songs, and add them to playlists.
+
+1. Go to https://developer.spotify.com/dashboard, log in, and click **Create app**.
+2. Name it **Jarvis**. For **Redirect URI**, enter `http://127.0.0.1:8888/callback` and click **Add**. Tick **Web API**, accept the terms and click **Save**.
+3. Copy the app's **Client ID**, open `.env`, and paste it after `JARVIS_SPOTIFY_CLIENT_ID=`.
+4. Run `jarvis.bat --connect-spotify` and click **Agree** in the browser.
+
+Starting playback on demand ("play my liked songs") needs **Spotify Premium**. On a free account, Jarvis opens the song in Spotify for you to press play.
+
 ## Things to try
 
 - "Introduce yourself"
@@ -92,6 +114,8 @@ You can then say "What's on my calendar today?", "Any important emails?", "Draft
 - "What reminders do I have?" / "Cancel the mum reminder"
 - "What's on my calendar tomorrow?" / "Add dentist on Friday at 3pm"
 - "Read my latest email from Amazon"
+- "What's this song?" / "Play my liked songs" / "Play Arctic Monkeys" / "Like this song"
+- "Jarvis, watch the room" / "Guard mode for 30 minutes" / "Stop security mode". Photos are saved in Pictures\Jarvis\security.
 - "Turn the volume down" / "Skip this song"
 - "How's my PC doing?"
 - "Find all PDFs in my Downloads"
@@ -106,6 +130,8 @@ You can then say "What's on my calendar today?", "Any important emails?", "Draft
 - `jarvis/brain.py`: his personality and the Claude loop.
 - `jarvis/server.py` + `web/`: the HUD and phone app. `web/make_icons.py` redraws the app icons.
 - `jarvis/network.py`: the phone link (Wi-Fi or Tailscale) and QR codes. `jarvis/hotkey.py`: the Ctrl+Alt+J shortcut.
+- `jarvis/notify.py`: alerts (spoken, and pushed to your phone). `jarvis/email_watch.py`: the inbox watcher.
+- `jarvis/security.py`: security mode. `jarvis/spotify_tools.py`: Spotify. `jarvis/briefing.py`: the startup greeting.
 - `jarvis/voice.py`: microphone and speech.
 - `data/`: long-term memory, notes, conversation log and the HUD access key.
 
@@ -117,5 +143,7 @@ You can then say "What's on my calendar today?", "Any important emails?", "Draft
 - `JARVIS_LOCATION`: your town, for the weather. If blank, it's detected from your internet connection.
 - `JARVIS_NEWS_FEEDS`: your own news sources as `Name=RSS-url`, comma-separated. Leave blank for the built-in balanced mix.
 - `JARVIS_HOTKEY`: the shortcut that summons Jarvis (default `ctrl+alt+j`).
+- `JARVIS_EMAIL_WATCH` (`on`/`off`) and `JARVIS_EMAIL_WATCH_MINUTES`: important-email alerts and how often to check.
+- `JARVIS_SPOTIFY_CLIENT_ID`: your Spotify app's Client ID (see "Connect Spotify").
 - `JARVIS_THINKING_PHRASE`: what he says when he starts on a command.
 - `JARVIS_WHISPER_MODEL` (terminal voice mode): `small.en` if he mishears you, `tiny.en` if he's slow.

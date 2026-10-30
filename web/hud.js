@@ -281,12 +281,12 @@ function handle(ev) {
       myId = ev.id; wakeWords = ev.wake_words || wakeWords; userName = ev.user || userName;
       if (ev.hotkey && canListen) micBtn.title = `Push to talk (or press ${ev.hotkey.toUpperCase()} in any app)`;
       addActivity("Secure uplink established.", true);
-      if (!greeted) {
-        greeted = true;
-        const h = new Date().getHours();
-        const g = `Good ${h < 12 ? "morning" : h < 18 ? "afternoon" : "evening"}, ${userName}. All systems are online. How can I help?`;
-        addMsg("jarvis", g); showSubtitle(g);
-      }
+      break;
+    case "greeting":  // weather + agenda greeting from Jarvis (spoken only when he first starts up)
+      if (greeted) break;  // reconnects after a network blip don't greet again
+      greeted = true;
+      addMsg("jarvis", ev.text); showSubtitle(ev.text);
+      if (ev.audio && voiceOn) { spokenText = ev.text; setState("speaking"); play(ev.audio, afterSpeaking); }
       break;
     case "user":
       addMsg("user", ev.text);
@@ -744,5 +744,46 @@ loadAgenda(); setInterval(loadAgenda, 2 * 60 * 1000);
 
 // Lets phones install JARVIS as an app (only works over https, i.e. the Tailscale link).
 if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
+// ---------- ALERTS: notifications on this device (reminders, important emails, security alerts) ----------
+const alertsBtn = $("#tg-alerts");
+const canPush = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
+const b64ToBytes = (b64) => Uint8Array.from(atob((b64 + "=".repeat((4 - b64.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+const api = (path, body) => fetch(`${path}?key=${encodeURIComponent(KEY)}`, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+
+async function refreshAlerts() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  alertsBtn.classList.toggle("on", !!sub && Notification.permission === "granted");
+  if (sub && Notification.permission === "granted") api("/api/push/subscribe", sub.toJSON());  // keep the PC's list fresh
+}
+
+if (canPush) {
+  alertsBtn.hidden = false;
+  refreshAlerts().catch(() => {});
+  alertsBtn.onclick = async () => {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      if (existing && alertsBtn.classList.contains("on")) {
+        await api("/api/push/unsubscribe", { endpoint: existing.endpoint });
+        await existing.unsubscribe();
+        addActivity("Alerts turned off on this device.", true);
+      } else {
+        if (await Notification.requestPermission() !== "granted") {
+          addActivity("Notifications are blocked. Allow them in this app's settings.", true);
+          return;
+        }
+        const { key } = await (await api("/api/push/key")).json();
+        const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+        await api("/api/push/subscribe", sub.toJSON());
+        addActivity("Alerts on: reminders, important emails and security alerts will notify this device.", true);
+      }
+    } catch (e) {
+      addActivity("Couldn't change alerts: " + e.message, true);
+    }
+    refreshAlerts().catch(() => {});
+  };
+}
 
 connect();

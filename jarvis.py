@@ -47,9 +47,15 @@ def log(who, text):
 
 
 def greeting():
-    hour = dt.datetime.now().hour
-    part = "morning" if hour < 12 else "afternoon" if hour < 18 else "evening"
-    return f"Good {part}, {config.USER_NAME}. Jarvis online. How can I help?"
+    from jarvis import briefing
+    with console.status("[cyan]Checking the weather and your calendar...", spinner="dots"):
+        return briefing.greeting()
+
+
+def start_background_services():
+    from jarvis import email_watch
+    tools.start_reminders()
+    email_watch.start()
 
 
 class Interface:
@@ -116,7 +122,7 @@ def text_mode(speak):
         mouth = Mouth()
     ui = Interface(mouth=mouth)
     tools.ui = ui
-    tools.start_reminders()
+    start_background_services()
     brain = Brain(mode="voice" if speak else "text", on_status=lambda s: console.print(f"  [dim]⚙ {s}[/]"))
     ui.show(greeting())
     console.print("[dim]Type a command. 'reset' starts a new conversation, 'exit' quits.[/]\n")
@@ -136,7 +142,7 @@ def voice_mode():
         ears = Ears()
     ui = Interface(mouth=mouth, ears=ears)
     tools.ui = ui
-    tools.start_reminders()
+    start_background_services()
     brain = Brain(mode="voice", on_status=lambda s: console.print(f"  [dim]⚙ {s}[/]"))
     ui.show(greeting())
     console.print(f"[dim]Say \"{config.WAKE_WORDS[0].title()}, ...\" to give a command. Say \"goodbye\" to quit. Ctrl+C also quits.[/]\n")
@@ -181,7 +187,7 @@ def open_hud(url):
     ):
         exe = os.path.expandvars(path)
         if os.path.exists(exe):
-            subprocess.Popen([exe, f"--app={url}", "--window-size=1600,900"])
+            subprocess.Popen([exe, f"--app={url}", "--window-size=1600,900", "--autoplay-policy=no-user-gesture-required"])
             return
     webbrowser.open(url)
 
@@ -238,6 +244,7 @@ def main():
     parser.add_argument("--port", type=int, default=config.PORT, help=f"HUD port (default {config.PORT})")
     parser.add_argument("--no-browser", action="store_true", help="don't open the HUD automatically")
     parser.add_argument("--connect-google", action="store_true", help="sign in to Gmail & Google Calendar")
+    parser.add_argument("--connect-spotify", action="store_true", help="sign in to Spotify")
     args = parser.parse_args()
 
     console.print(BANNER)
@@ -246,6 +253,15 @@ def main():
         console.print("[cyan]Opening Google sign-in in your browser...[/]")
         google_tools.connect()
         console.print("[bold green]Gmail and Google Calendar connected.[/]")
+        return
+    if args.connect_spotify:
+        if not config.SPOTIFY_CLIENT_ID:
+            console.print("[bold red]Add JARVIS_SPOTIFY_CLIENT_ID to .env first[/] (see 'Connect Spotify' in the README).")
+            sys.exit(1)
+        from jarvis import spotify_tools
+        console.print("[cyan]Opening Spotify sign-in in your browser...[/]")
+        spotify_tools.connect()
+        console.print("[bold green]Spotify connected.[/]")
         return
     if not os.getenv("ANTHROPIC_API_KEY"):
         console.print("[bold red]No ANTHROPIC_API_KEY found.[/] Open the .env file and paste your key in "

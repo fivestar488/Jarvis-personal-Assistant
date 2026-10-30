@@ -14,6 +14,10 @@ pyautogui
 pyperclip
 pillow
 
+# Phone notifications, Spotify
+pywebpush
+spotipy
+
 # Gmail, Google Calendar, webcam
 google-api-python-client
 google-auth-oauthlib
