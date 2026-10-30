@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="mark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#000308">
+<meta name="theme-color" content="#1a0403">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -11,7 +11,7 @@
 <title>J.A.R.V.I.S.</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/static/icon.svg">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -39,6 +39,8 @@
     <span id="date"></span>
   </div>
   <div class="topbar-right">
+    <button id="btn-phone" class="chip" title="Connect your phone">PHONE</button>
+    <button id="btn-theme" class="chip" title="Switch between the suit's red & gold and the blue JARVIS look">THEME</button>
     <button id="btn-reset" class="chip" title="Start a new conversation">NEW SESSION</button>
     <span id="link" class="link"><i></i><b>OFFLINE</b></span>
   </div>
@@ -126,6 +128,14 @@
     </div>
     <div class="state-label" id="state-label">STANDBY</div>
     <div class="subtitle" id="subtitle"></div>
+    <div class="quick" id="quick" aria-label="Quick commands">
+      <button data-say="Give me my morning briefing.">BRIEFING</button>
+      <button data-say="Check my unread emails and tell me which ones look important.">EMAILS</button>
+      <button data-say="What's on my calendar today and tomorrow?">AGENDA</button>
+      <button data-say="What's the weather like today, and what's the forecast?">WEATHER</button>
+      <button data-say="What are the top news headlines right now?">NEWS</button>
+      <button data-say="Take a look at my screen and tell me what you see.">SCREEN</button>
+    </div>
     <div class="mini-stats" id="mini-stats"></div>
   </section>
 
@@ -172,6 +182,16 @@
       <button id="deny" class="deny">DENY</button>
       <button id="allow" class="allow">AUTHORIZE</button>
     </div>
+  </div>
+</div>
+
+<div id="phone" class="modal" hidden>
+  <div class="modal-box phone-box">
+    <h3>Connect Your Phone</h3>
+    <div class="phone-net"><i></i><span id="phone-net">Checking network...</span></div>
+    <div id="phone-qr" class="phone-qr"></div>
+    <p id="phone-note"></p>
+    <div class="modal-actions"><button id="phone-close" class="allow">DONE</button></div>
   </div>
 </div>
 

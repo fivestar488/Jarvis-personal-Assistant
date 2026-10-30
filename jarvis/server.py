@@ -1,14 +1,13 @@
-"""The HUD: a web interface for Jarvis that works on this PC and on your phone (same Wi-Fi).
+"""The HUD: Jarvis's Iron Man-style interface, for this PC and your phone.
 
-Every browser that connects shares the same Jarvis. Access needs the secret key in data/access_key.txt,
-which is built into the link / QR code printed at startup, so nobody else on your network can control your PC.
+Access needs the secret key in data/access_key.txt (built into the link and the phone QR code), so nobody else
+on your network, and no other website on this PC, can control Jarvis.
 """
 import asyncio
 import base64
 import concurrent.futures
 import datetime as dt
 import secrets
-import socket
 import uuid
 from contextlib import asynccontextmanager
 
@@ -17,7 +16,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, feeds, google_tools, tools
+from . import config, feeds, google_tools, network, tools
 from .brain import Brain
 from .voice import synthesize
 
@@ -33,7 +32,9 @@ async def lifespan(_app):
     tools.ui = HudInterface()
     brain = Brain(mode="hud", on_status=lambda s: from_thread(broadcast({"type": "status", "text": s})))
     tools.start_reminders()
+    watcher = asyncio.create_task(watch_network())
     yield
+    watcher.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -42,6 +43,7 @@ app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 clients: dict[str, WebSocket] = {}
 pending_confirms: dict[str, concurrent.futures.Future] = {}
 held_announcements: list[str] = []  # reminders that fired while no screen was connected
+listen_on_connect = False  # hotkey pressed before the HUD window was open
 loop: asyncio.AbstractEventLoop | None = None
 brain: Brain | None = None
 busy = asyncio.Lock()
@@ -53,30 +55,37 @@ def access_key():
     return KEY_FILE.read_text().strip()
 
 
-def lan_ip():
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))  # no packets sent; just picks the outgoing interface
-            return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-
-
-def tailscale_ip():
-    """This PC's Tailscale address, if Tailscale is installed and connected (lets your phone reach Jarvis from anywhere)."""
-    import shutil
-    import subprocess
-    exe = shutil.which("tailscale") or r"C:\Program Files\Tailscale\tailscale.exe"
-    try:
-        out = subprocess.run([exe, "ip", "-4"], capture_output=True, text=True, timeout=5).stdout.strip()
-        return out.splitlines()[0] if out else None
-    except (OSError, subprocess.SubprocessError):
-        return None
-
-
 def check_key(key):
     if key != access_key():
         raise HTTPException(403)
+
+
+# ---------------------------------------------------------------- phone link
+
+phone_link = None        # the current {url, host, network, tailscale}, kept up to date by watch_network()
+on_network_change = None  # set by jarvis.py to reprint the QR code in the console
+
+
+async def watch_network():
+    """Every few seconds, check whether the phone link changed (new Wi-Fi, Tailscale on/off) and announce it."""
+    global phone_link
+    while True:
+        link = await asyncio.to_thread(network.current_link, access_key())
+        if link != phone_link:
+            first = phone_link is None
+            phone_link = link
+            if not first:
+                await broadcast({"type": "network", **phone_payload()})
+            if on_network_change:
+                on_network_change(link, first)
+        await asyncio.sleep(config.NETWORK_CHECK_SECONDS)
+
+
+def phone_payload():
+    if not phone_link:
+        return {"online": False}
+    return {"online": True, "svg": network.qr_svg(phone_link["url"]), "network": phone_link["network"],
+            "host": phone_link["host"], "tailscale": phone_link["tailscale"], "secure": phone_link["secure"]}
 
 
 async def broadcast(event):
@@ -135,6 +144,15 @@ class HudInterface:
         from_thread(send())
 
 
+def summon():
+    """Global hotkey pressed: tell the HUD to start listening (or do it as soon as the window connects)."""
+    global listen_on_connect
+    if clients and loop:
+        from_thread(broadcast({"type": "listen"}))
+    else:
+        listen_on_connect = True
+
+
 async def handle_message(text, origin):
     async with busy:
         await broadcast({"type": "user", "text": text, "origin": origin})
@@ -155,6 +173,12 @@ async def index():
 @app.get("/manifest.webmanifest")
 async def manifest():
     return FileResponse(WEB_DIR / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+async def service_worker():
+    # Served from the root so it covers the whole app (needed for "Install app" on phones).
+    return FileResponse(WEB_DIR / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/weather")
@@ -186,6 +210,13 @@ async def calendar(key: str):
     return {"connected": True, "events": events}
 
 
+@app.get("/api/phone")
+async def phone(key: str):
+    """The current phone link as a QR code."""
+    check_key(key)
+    return phone_payload()
+
+
 @app.get("/api/stats")
 async def stats(key: str):
     check_key(key)
@@ -210,10 +241,15 @@ async def websocket(ws: WebSocket, key: str = ""):
         return
     client_id = uuid.uuid4().hex
     clients[client_id] = ws
-    await ws.send_json({"type": "hello", "id": client_id, "user": config.USER_NAME, "wake_words": config.WAKE_WORDS})
+    await ws.send_json({"type": "hello", "id": client_id, "user": config.USER_NAME, "wake_words": config.WAKE_WORDS,
+                        "hotkey": config.HOTKEY})
     while held_announcements:
         text = held_announcements.pop(0)
         await ws.send_json({"type": "announce", "text": text, "audio": await voice_for(text)})
+    global listen_on_connect
+    if listen_on_connect:
+        listen_on_connect = False
+        await ws.send_json({"type": "listen"})
     try:
         while True:
             event = await ws.receive_json()

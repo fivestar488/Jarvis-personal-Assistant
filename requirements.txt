@@ -3,7 +3,7 @@ anthropic>=0.70
 python-dotenv
 rich
 
-# HUD (web interface, also works on your phone)
+# HUD (web interface, also on your phone)
 fastapi
 uvicorn[standard]
 qrcode

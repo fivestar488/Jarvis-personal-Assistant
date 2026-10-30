@@ -1,6 +1,6 @@
 """JARVIS - your personal AI assistant.
 
-    python jarvis.py            Iron Man HUD in your browser (also works on your phone)
+    python jarvis.py            Iron Man HUD in its own window
     python jarvis.py --text     type to Jarvis in the terminal (add --speak to hear him)
     python jarvis.py --voice    hands-free in the terminal: say "Jarvis, ..." to give a command
 """
@@ -187,32 +187,46 @@ def open_hud(url):
 
 
 def hud_mode(port, open_browser):
-    import qrcode
+    config.PORT = port
     import uvicorn
     from jarvis import server
 
-    key = server.access_key()
-    local_url = f"http://localhost:{port}/?key={key}"
+    local_url = f"http://localhost:{port}/?key={server.access_key()}"
     with socket.socket() as s:
         if s.connect_ex(("127.0.0.1", port)) == 0:  # Jarvis is already running: just bring the window back
             console.print("[cyan]Jarvis is already running. Reopening the HUD window...[/]")
             open_hud(local_url)
             return
-    phone_url = f"http://{server.lan_ip()}:{port}/?key={key}"
     console.print(f"\n[bold cyan]HUD online[/]  →  {local_url}")
-    console.print(f"[bold cyan]Phone, same Wi-Fi[/]  →  {phone_url}")
-    ts_ip = server.tailscale_ip()
-    if ts_ip:
-        phone_url = f"http://{ts_ip}:{port}/?key={key}"
-        console.print(f"[bold cyan]Phone, anywhere (Tailscale)[/]  →  {phone_url}")
-    console.print("[dim]Scan this with your phone's camera. Then use 'Add to Home Screen' to get a JARVIS app icon.[/]")
-    qr = qrcode.QRCode(border=1)
-    qr.add_data(phone_url)
-    qr.print_ascii(invert=True)
-    console.print("[dim]If Windows Firewall asks about Python, allow it on Private networks so your phone can connect.\n"
-                  "Keep the access link private: anyone with it can control this PC. Ctrl+C to shut down.[/]\n")
+    console.print(f"[bold cyan]Hotkey[/]  →  press [bold]{config.HOTKEY.upper()}[/] in any app to bring up Jarvis and talk")
+    console.print("[dim]Keep this window open while you use Jarvis. Close it (or Ctrl+C) to shut him down.[/]\n")
+
+    from jarvis import hotkey
+
+    def summon():
+        if not hotkey.focus_window("J.A.R.V.I.S."):
+            open_hud(local_url)
+        server.summon()
+
+    hotkey.start(config.HOTKEY, summon, on_error=lambda msg: console.print(f"[yellow]{msg}[/]"))
+
+    from jarvis import network
+
+    def show_phone_link(link, first):
+        """Prints the phone QR code at startup, and a fresh one whenever the PC changes network."""
+        if not first:
+            console.print(f"\n[bold yellow]Network changed[/] — new phone link below (the PHONE button in the HUD has it too).")
+        if not link:
+            console.print("[dim]No network right now, so the phone link is unavailable.[/]")
+            return
+        via = "works anywhere Tailscale is on" if link["tailscale"] else f"phone must be on the same Wi-Fi: {link['network']}"
+        console.print(f"[bold cyan]Phone[/] ({via})  →  {link['url']}")
+        network.print_qr(link["url"])
+
+    server.on_network_change = show_phone_link
     if open_browser:
         threading.Timer(1.5, open_hud, args=(local_url,)).start()
+    # 0.0.0.0 = reachable from your phone too. Every request still needs the secret key.
     uvicorn.run(server.app, host="0.0.0.0", port=port, log_level="warning")
 
 
@@ -221,7 +235,7 @@ def main():
     parser.add_argument("--text", action="store_true", help="type to Jarvis in the terminal")
     parser.add_argument("--speak", action="store_true", help="with --text: Jarvis speaks his replies")
     parser.add_argument("--voice", action="store_true", help="hands-free voice mode in the terminal")
-    parser.add_argument("--port", type=int, default=8765, help="HUD port (default 8765)")
+    parser.add_argument("--port", type=int, default=config.PORT, help=f"HUD port (default {config.PORT})")
     parser.add_argument("--no-browser", action="store_true", help="don't open the HUD automatically")
     parser.add_argument("--connect-google", action="store_true", help="sign in to Gmail & Google Calendar")
     args = parser.parse_args()

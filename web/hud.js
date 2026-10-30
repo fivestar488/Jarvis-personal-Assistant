@@ -10,6 +10,17 @@ const params = new URLSearchParams(location.search);
 const KEY = params.get("key") || store.get("jarvis-key") || "";
 if (params.get("key")) { store.set("jarvis-key", KEY); history.replaceState(null, "", location.pathname); }
 
+// ---------- theme: "mark" (suit red & gold) or "jarvis" (blue hologram) ----------
+function applyTheme(name) {
+  document.documentElement.dataset.theme = name;
+  const btn = document.getElementById("btn-theme");
+  if (btn) btn.textContent = name === "mark" ? "THEME: MARK" : "THEME: JARVIS";
+  store.set("jarvis-theme", name);
+}
+applyTheme(store.get("jarvis-theme") || "mark");
+document.getElementById("btn-theme").onclick = () =>
+  applyTheme(document.documentElement.dataset.theme === "mark" ? "jarvis" : "mark");
+
 // ---------- elements ----------
 const reactor = $("#reactor"), stateLabel = $("#state-label"), subtitle = $("#subtitle");
 const logEl = $("#log"), activityEl = $("#activity"), input = $("#input"), micBtn = $("#btn-mic");
@@ -268,6 +279,7 @@ function handle(ev) {
   switch (ev.type) {
     case "hello":
       myId = ev.id; wakeWords = ev.wake_words || wakeWords; userName = ev.user || userName;
+      if (ev.hotkey && canListen) micBtn.title = `Push to talk (or press ${ev.hotkey.toUpperCase()} in any app)`;
       addActivity("Secure uplink established.", true);
       if (!greeted) {
         greeted = true;
@@ -300,6 +312,14 @@ function handle(ev) {
       else if (!currentSrc) afterSpeaking();
       break;
     }
+    case "network":  // the PC changed network: the phone needs a new QR code
+      if (!$("#phone").hidden) showPhone(ev, true);
+      else if (ev.online) phoneBtn.classList.add("ping");
+      addActivity(ev.online ? `Network changed to ${ev.network}. New phone code ready.` : "Network lost.", true);
+      break;
+    case "listen":  // global hotkey pressed: same as tapping the mic
+      micBtn.onclick();
+      break;
     case "confirm":
       showConfirm(ev.id, ev.question);
       break;
@@ -530,7 +550,34 @@ handsBtn.onclick = () => {
 };
 $("#form").addEventListener("submit", (e) => { e.preventDefault(); submit(input.value); });
 $("#btn-reset").onclick = () => submit("new session");
-updateToggles();
+document.querySelectorAll("#quick button").forEach((b) => (b.onclick = () => submit(b.dataset.say)));
+
+// ---------- phone pairing (QR code follows the PC between networks) ----------
+const phoneBtn = $("#btn-phone");
+function showPhone(p, changed = false) {
+  const qr = $("#phone-qr");
+  if (!p.online) {
+    qr.innerHTML = "";
+    $("#phone-net").textContent = "NO NETWORK";
+    $("#phone-note").textContent = "This PC isn't connected to a network right now. The code will appear as soon as it is.";
+    return;
+  }
+  qr.innerHTML = p.svg;
+  if (changed) { qr.classList.remove("flash"); void qr.offsetWidth; qr.classList.add("flash"); }
+  $("#phone-net").textContent = (changed ? "NEW NETWORK: " : "") + p.network.toUpperCase() + (p.secure ? " · SECURE" : "");
+  $("#phone-note").textContent = p.secure
+    ? "Scan with your phone's camera, then tap ⋮ → Install app (or Add to Home screen). Works anywhere while Tailscale is on, including the microphone."
+    : p.tailscale
+    ? "Scan with your phone's camera. This link works anywhere, as long as Tailscale is on on your phone."
+    : `Scan with your phone's camera. Your phone must be on the same Wi-Fi (${p.network}). If the PC changes network, this code updates by itself.`;
+}
+phoneBtn.onclick = async () => {
+  phoneBtn.classList.remove("ping");
+  $("#phone").hidden = false;
+  try { showPhone(await (await fetch(`/api/phone?key=${encodeURIComponent(KEY)}`)).json()); }
+  catch { $("#phone-note").textContent = "Couldn't get the phone link."; }
+};
+$("#phone-close").onclick = () => { $("#phone").hidden = true; };updateToggles();
 
 // ---------- diagnostics ----------
 function setGauge(id, value) {
@@ -694,5 +741,8 @@ selectTab(store.get("jarvis-tab") || "comms");
 loadWeather(); setInterval(loadWeather, 10 * 60 * 1000);
 loadNews(); setInterval(loadNews, 10 * 60 * 1000);
 loadAgenda(); setInterval(loadAgenda, 2 * 60 * 1000);
+
+// Lets phones install JARVIS as an app (only works over https, i.e. the Tailscale link).
+if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
 connect();

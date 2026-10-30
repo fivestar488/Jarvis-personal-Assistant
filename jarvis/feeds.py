@@ -1,10 +1,12 @@
 """Live data for the HUD and for Jarvis: your location, weather (Open-Meteo, free, no key) and news headlines (RSS)."""
 import json
+import re
 import threading
 import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 
 from . import config
 
@@ -91,18 +93,52 @@ def weather(place=None):
     return _cached(f"weather:{loc['lat']:.2f},{loc['lon']:.2f}", 600, fetch)
 
 
-def headlines(limit=25):
+# Opinion pieces, live blogs and media items aren't straight news, so they're left out of the ticker.
+NOT_NEWS = re.compile(
+    r"^(opinion|analysis|comment|editorial|letters?|watch|video|live|listen|podcast|quiz|in pictures|photos)\b"
+    r"|\|\s*opinion|\bopinion:|\blive updates\b|\blive:", re.I)
+PER_SOURCE = 5
+
+
+def _tag(el):
+    return el.tag.rsplit("}", 1)[-1]  # strip XML namespaces (some feeds use RDF/Atom-style tags)
+
+
+def _child(el, name):
+    return next(((c.text or "").strip() for c in el if _tag(c) == name), "")
+
+
+def _fetch_source(name, url):
+    try:
+        root = ET.fromstring(_get(url, as_json=False))
+    except Exception:
+        return []
+    items = []
+    for item in (e for e in root.iter() if _tag(e) in ("item", "entry")):  # RSS uses <item>, Atom uses <entry>
+        title = _child(item, "title")
+        title = re.sub(r"\s+-\s+(Reuters|AP News|The Associated Press)$", "", title)  # Google News adds " - Source"
+        link = _child(item, "link") or next((c.get("href", "") for c in item if _tag(c) == "link"), "")
+        if title and not NOT_NEWS.search(title):
+            items.append({"title": title, "link": link, "source": name})
+        if len(items) >= PER_SOURCE:
+            break
+    return items
+
+
+def _same_story(a, b):
+    wa, wb = (set(re.findall(r"[a-z]{4,}", t.lower())) for t in (a, b))
+    return bool(wa and wb) and len(wa & wb) / min(len(wa), len(wb)) >= 0.6
+
+
+def headlines(limit=48):
+    """Top stories from several reliable outlets, interleaved so no single outlet dominates."""
     def fetch():
-        items = []
-        for url in config.NEWS_FEEDS:
-            try:
-                root = ET.fromstring(_get(url, as_json=False))
-            except Exception:
-                continue
-            source = (root.findtext("channel/title") or "").replace("BBC News - ", "BBC ").strip()
-            for item in root.iter("item"):
-                title = (item.findtext("title") or "").strip()
-                if title:
-                    items.append({"title": title, "link": (item.findtext("link") or "").strip(), "source": source})
-        return items
+        with ThreadPoolExecutor(max_workers=12) as pool:  # fetch every outlet at once
+            per_source = list(pool.map(lambda feed: _fetch_source(*feed), config.NEWS_FEEDS))
+        mixed = []
+        for round_ in range(PER_SOURCE):
+            for items in per_source:
+                if round_ < len(items) and not any(_same_story(items[round_]["title"], m["title"]) for m in mixed):
+                    mixed.append(items[round_])
+        return mixed
     return _cached("news", 600, fetch)[:limit]

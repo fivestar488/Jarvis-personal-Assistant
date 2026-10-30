@@ -14,7 +14,7 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 
 | Launcher | What it does |
 |---|---|
-| `jarvis.bat` | **The HUD.** Opens in your browser, with the arc reactor, live diagnostics, voice and hands-free mode |
+| `jarvis.bat` | **The HUD.** Opens in its own window, with the arc reactor, live diagnostics, voice and hands-free mode |
 | `jarvis.bat --text` | Type to Jarvis in the terminal (`--text --speak` to hear him) |
 | `jarvis-voice.bat` | Hands-free in the terminal using local Whisper: say **"Jarvis, …"** |
 
@@ -30,22 +30,17 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 
 The HUD also shows a **live news ticker**, a **weather radar** with a 4-day forecast, and your **agenda** for today and tomorrow (once Google Calendar is connected).
 
+`jarvis.bat` opens the HUD in its own Edge window, because voice input only works in Edge and Chrome. If you close that window, run `jarvis.bat` again to reopen it. Jarvis keeps running in the console window until you close it.
+
 ### On your phone
 
-When the HUD starts, the console shows a **QR code**. Scan it with your phone's camera while on the same Wi-Fi. Then use **Share → Add to Home Screen** to get a JARVIS app icon. On the phone, the panels become tabs: COMMS, AGENDA, WEATHER, SYSTEM and LOG.
+Click **PHONE** in the HUD (or look in the console window) and scan the QR code with your phone's camera. Then use **Share → Add to Home Screen** to get a JARVIS app icon. On the phone, the panels become tabs.
 
-- The first time, Windows Firewall may ask about Python. Allow it on **Private networks**.
-- To talk on your phone, tap the microphone on your keyboard. Phone browsers block the in-page mic on home networks.
+- **The code follows your PC between networks.** Jarvis checks every few seconds. When the PC moves (office to home, a new Wi-Fi), the PHONE button blinks and a new code appears in the HUD and the console. Scan it again.
+- Without Tailscale, the phone must be on the **same Wi-Fi** as the PC, and some routers (including HOT's) block devices from reaching each other.
+- **With Tailscale, it works everywhere:** on any Wi-Fi, mobile data, or a router that blocks devices. Install Tailscale on the PC and your phone, sign in to both with the same account, and the code switches to the Tailscale link automatically.
+- To talk on your phone, tap your keyboard's microphone.
 - The link contains a secret key, so only you can control your PC. Keep it private. To reset it, delete `data/access_key.txt`.
-- Your PC must be on with Jarvis running.
-
-### Phone access from anywhere (Tailscale)
-
-Tailscale is free, and it links your own devices privately, so your phone can reach Jarvis away from home. Nobody else can.
-
-1. Install Tailscale on the PC from https://tailscale.com/download and sign in.
-2. Install the Tailscale app on your phone and sign in with the **same account**.
-3. Restart Jarvis. The console now shows a **"Phone, anywhere"** link, and the QR code uses it. Scan it once and add it to your home screen.
 
 ## Connect Gmail & Calendar (once, about 10 minutes)
 
@@ -87,7 +82,7 @@ You can then say "What's on my calendar today?", "Any important emails?", "Draft
 - `jarvis/brain.py`: his personality and the Claude loop.
 - `jarvis/server.py` + `web/`: the HUD.
 - `jarvis/voice.py`: microphone and speech.
-- `data/`: long-term memory, notes, conversation log and the phone access key.
+- `data/`: long-term memory, notes, conversation log and the HUD access key.
 
 ## Tuning (`.env`)
 
