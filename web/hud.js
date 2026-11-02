@@ -388,7 +388,7 @@ function startListening(mode) {
       // Edge and Chrome send speech to an online service; browsers like Opera expose the API with no service behind it.
       handsFree = false; updateToggles();
       const msg = /Edg\/|Chrome\//.test(navigator.userAgent) && !/OPR\//.test(navigator.userAgent)
-        ? "Can't reach the speech service. Check the internet connection, and turn on Windows Settings → Privacy & security → Speech → Online speech recognition."
+        ? "Can't reach the speech service. Check the internet connection and any VPN or antivirus web filter. Running fix-mic.bat in the Jarvis folder checks everything."
         : "Voice input doesn't work in this browser. Open Jarvis in Edge or Chrome, or type instead.";
       addActivity(msg, true);
       showSubtitle(msg, true);
