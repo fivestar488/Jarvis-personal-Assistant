@@ -6,9 +6,9 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 
 ## Setup (once)
 
-1. Double-click **`setup.bat`**.
-2. Get an API key at https://console.anthropic.com/settings/keys.
-3. Open **`.env`** and paste the key after `ANTHROPIC_API_KEY=`.
+1. Get a Claude API key at https://console.anthropic.com/settings/keys.
+2. Double-click **`setup.bat`**. It installs Python automatically if the PC doesn't have it, installs everything else Jarvis needs (5–10 minutes), then asks for your API key, your name, and what Jarvis should call you. If Windows says "Windows protected your PC", click **More info → Run anyway**.
+3. Double-click **`jarvis.bat`**. You can change your answers any time in the **`.env`** file.
 
 ## Run
 
