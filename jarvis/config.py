@@ -31,6 +31,8 @@ VOICE = os.getenv("JARVIS_VOICE", "en-GB-RyanNeural")
 VOICE_RATE = os.getenv("JARVIS_VOICE_RATE", "+5%")     # speed, e.g. -5% or +10%
 VOICE_PITCH = os.getenv("JARVIS_VOICE_PITCH", "+0Hz")  # e.g. -3Hz for deeper
 WHISPER_MODEL = os.getenv("JARVIS_WHISPER_MODEL", "base.en")
+# The HUD's own speech recognition (when the browser's isn't available) favours speed: tiny.en is ~3x faster.
+HUD_WHISPER_MODEL = os.getenv("JARVIS_HUD_WHISPER_MODEL", "tiny.en")
 LOCATION = os.getenv("JARVIS_LOCATION", "")  # e.g. "Manchester". Blank = detect from your internet connection
 WEATHER_UNITS = os.getenv("JARVIS_WEATHER_UNITS", "metric")  # or "imperial"
 # News ticker sources: a balanced mix of wire services and public broadcasters from several countries.

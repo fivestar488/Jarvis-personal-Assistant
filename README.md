@@ -10,6 +10,8 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 2. Double-click **`setup.bat`**. It installs Python automatically if the PC doesn't have it, installs everything else Jarvis needs (5–10 minutes), then asks for your API key, your name, and what Jarvis should call you. If Windows says "Windows protected your PC", click **More info → Run anyway**.
 3. Double-click **`jarvis.bat`**. You can change your answers any time in the **`.env`** file.
 
+**Need help?** Open Claude, at claude.ai or Claude Code in this folder, and give it **`HANDOFF.md`**. It explains how Jarvis is set up and how to fix common problems.
+
 ## Run
 
 | Launcher | What it does |
@@ -35,7 +37,7 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 
 The HUD also shows a **live news ticker**, a **weather radar** with a 4-day forecast, and your **agenda** for today and tomorrow (once Google Calendar is connected). The ticker mixes 12 outlets so no single viewpoint dominates: Reuters, AP, BBC, DW, PBS NewsHour, Euronews and The Hill, plus Ars Technica, The Verge, TechCrunch, Wired and MIT Technology Review for tech. Opinion pieces and live blogs are left out.
 
-**Speech recognition:** the HUD normally uses Edge's built-in speech recognition. If that isn't available on a PC (Edge's online speech service blocked, or a browser like Opera), Jarvis switches to **his own** automatically. The browser records you, and Whisper turns it into text on the PC. The first time, this downloads about 150 MB, and each command then takes a couple of seconds longer to send.
+**Speech recognition:** the HUD normally uses Edge's built-in speech recognition. If that isn't available on a PC (Edge's online speech service blocked, or a browser like Opera), Jarvis switches to **his own** automatically. The browser records you, and Whisper turns it into text on the PC. The first time, this downloads about 75 MB, and each command then takes a second or two longer to send.
 
 **Mic not working?** Double-click **`fix-mic.bat`**. It checks Windows' microphone privacy settings, the internet connection to the speech service, whether Edge has blocked the mic for Jarvis, and whether a microphone is plugged in. It fixes what it can and tells you how to fix the rest.
 
@@ -151,3 +153,4 @@ Starting playback on demand ("play my liked songs") needs **Spotify Premium**. O
 - `JARVIS_SPOTIFY_CLIENT_ID`: your Spotify app's Client ID (see "Connect Spotify").
 - `JARVIS_THINKING_PHRASE`: what he says when he starts on a command.
 - `JARVIS_WHISPER_MODEL` (terminal voice mode): `small.en` if he mishears you, `tiny.en` if he's slow.
+- `JARVIS_HUD_WHISPER_MODEL` (the HUD's own speech recognition): `tiny.en` by default for speed; `base.en` if he mishears you.

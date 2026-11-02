@@ -27,18 +27,25 @@ async def synthesize(text):
     return bytes(audio)
 
 
-_whisper = None
+_whisper = {}
 _whisper_lock = threading.Lock()
 
 
-def whisper():
-    """The Whisper model, loaded once. First use downloads it (~150 MB for base.en)."""
-    global _whisper
+def whisper(name=None):
+    """A Whisper model, loaded once. First use downloads it (~75 MB for tiny.en, ~150 MB for base.en)."""
+    name = name or config.HUD_WHISPER_MODEL
     with _whisper_lock:
-        if _whisper is None:
+        if name not in _whisper:
             from faster_whisper import WhisperModel
-            _whisper = WhisperModel(config.WHISPER_MODEL, device="cpu", compute_type="int8")
-    return _whisper
+            _whisper[name] = WhisperModel(name, device="cpu", compute_type="int8")
+    return _whisper[name]
+
+
+def warm_whisper():
+    """Load the HUD's model and run it once, so your first command isn't the slow one."""
+    import numpy as np
+    segments, _ = whisper().transcribe(np.zeros(16000, np.float32), language="en", vad_filter=True)
+    list(segments)
 
 
 def transcribe_pcm(pcm):
@@ -64,7 +71,7 @@ class Ears:
         self.mic = sr.Microphone(sample_rate=16000)
         with self.mic as source:
             self.recognizer.adjust_for_ambient_noise(source, duration=1)
-        self.model = whisper()
+        self.model = whisper(config.WHISPER_MODEL)
 
     def listen(self, timeout=None, phrase_limit=15):
         """Wait for speech and return the transcript, or None if nobody spoke within `timeout` seconds."""

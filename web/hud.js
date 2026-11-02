@@ -355,10 +355,14 @@ let engine = store.get("jarvis-stt") === "local" || !SR ? "local" : "browser";
 const canListen = window.isSecureContext && (!!SR || canRecord);
 let rec = null, followUpUntil = 0;
 
+let speechReady = false;
 function warmLocalSpeech() {
-  addActivity("Loading Jarvis's speech recognition (the first time downloads about 150 MB)...", true);
+  addActivity("Loading Jarvis's speech recognition (the first time downloads about 75 MB)...", true);
   fetch(`/api/transcribe?key=${encodeURIComponent(KEY)}`, { method: "POST" })
-    .then((r) => addActivity(r.ok ? "Speech recognition ready." : "Speech recognition failed to load.", true))
+    .then((r) => {
+      speechReady = r.ok;
+      addActivity(r.ok ? "Speech recognition ready." : "Speech recognition failed to load. Check the internet connection and restart Jarvis.", true);
+    })
     .catch(() => {});
 }
 if (canListen && engine === "local") warmLocalSpeech();
@@ -382,7 +386,7 @@ function to16k(input, rate) {
 class LocalRecognition {
   start() {
     this.live = true; this.pending = 0; this.queue = Promise.resolve();
-    this.preroll = []; this.phrase = null; this.floor = null; this.lastEmit = 0;
+    this.preroll = []; this.phrase = null; this.levels = []; this.lastEmit = 0;
     navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
       .then((stream) => {
         this.stream = stream;
@@ -407,9 +411,12 @@ class LocalRecognition {
     let sum = 0;
     for (const v of input) sum += v * v;
     const rms = Math.sqrt(sum / input.length);
-    // Follow the room's background level (fast down, slow up) so it works in quiet and noisy rooms.
-    this.floor = this.floor == null ? rms : this.floor + (rms - this.floor) * (rms < this.floor ? 0.3 : 0.002);
-    const loud = rms > Math.max(0.012, this.floor * 3);
+    // The room's background level is the quietest moment of the last 3 seconds (there are always little gaps
+    // between words), so a fan or a noisy room doesn't count as you talking forever.
+    this.levels.push(rms);
+    if (this.levels.length * chunkMs > 3000) this.levels.shift();
+    this.floor = Math.min(...this.levels);
+    const loud = rms > Math.max(0.012, this.floor * 2.5 + 0.004);
     const chunk = to16k(input, this.ctx.sampleRate);
     if (!this.phrase) {
       this.preroll.push(chunk);
@@ -420,8 +427,13 @@ class LocalRecognition {
       if (loud) this.lastLoud = now;
       if (now - this.lastLoud > PHRASE_END_MS || now - this.started > MAX_PHRASE_MS) this.finishPhrase();
     }
-    // While you're talking or a phrase is being transcribed, keep the command open (like the browser's interim results).
-    if ((this.phrase || this.pending) && now - this.lastEmit > 250) { this.lastEmit = now; this.emit("…", false); }
+    // While you're talking or a phrase is being transcribed, keep the command open (like the browser's
+    // interim results) and say what's happening.
+    if ((this.phrase || this.pending) && now - this.lastEmit > 250) {
+      this.lastEmit = now;
+      this.emit(this.phrase ? "(hearing you…)"
+        : speechReady ? "(transcribing…)" : "(speech recognition still loading - first time only…)", false);
+    }
   }
   finishPhrase() {
     const parts = this.phrase, pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
@@ -429,8 +441,9 @@ class LocalRecognition {
     this.phrase = null;
     this.pending++;
     const result = fetch(`/api/transcribe?key=${encodeURIComponent(KEY)}`, { method: "POST", body: pcm.buffer })
-      .then((r) => (r.ok ? r.json() : { text: "" }))
-      .catch(() => ({ text: "" }));
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`error ${r.status}`))))
+      .then((r) => { speechReady = true; return r; })
+      .catch((e) => { addActivity(`Couldn't transcribe that (${e.message}). Is Jarvis still running?`, true); return { text: "" }; });
     // Deliver phrases in the order you said them, even if a short one finishes transcribing first.
     this.queue = this.queue.then(() => result).then(({ text }) => {
       this.pending--;

@@ -8,6 +8,7 @@ import base64
 import concurrent.futures
 import datetime as dt
 import secrets
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -18,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import briefing, config, email_watch, feeds, google_tools, network, notify, security, tools
 from .brain import Brain
-from .voice import synthesize, transcribe_pcm, whisper
+from .voice import synthesize, transcribe_pcm, warm_whisper
 
 WEB_DIR = config.ROOT / "web"
 KEY_FILE = config.DATA_DIR / "access_key.txt"
@@ -274,9 +275,12 @@ async def transcribe(key: str, request: Request):
         raise HTTPException(413)
     run = asyncio.get_running_loop().run_in_executor
     if not pcm:
-        await run(speech_worker, whisper)
+        await run(speech_worker, warm_whisper)
         return {"text": ""}
-    return {"text": await run(speech_worker, transcribe_pcm, pcm)}
+    started = time.monotonic()
+    text = await run(speech_worker, transcribe_pcm, pcm)
+    print(f"  Heard ({len(pcm) / 32000:.1f}s of speech, transcribed in {time.monotonic() - started:.1f}s): {text or '(nothing)'}")
+    return {"text": text}
 
 
 @app.get("/api/phone")
