@@ -27,10 +27,35 @@ async def synthesize(text):
     return bytes(audio)
 
 
+_whisper = None
+_whisper_lock = threading.Lock()
+
+
+def whisper():
+    """The Whisper model, loaded once. First use downloads it (~150 MB for base.en)."""
+    global _whisper
+    with _whisper_lock:
+        if _whisper is None:
+            from faster_whisper import WhisperModel
+            _whisper = WhisperModel(config.WHISPER_MODEL, device="cpu", compute_type="int8")
+    return _whisper
+
+
+def transcribe_pcm(pcm):
+    """16 kHz mono 16-bit PCM bytes (what the HUD sends) -> text. Empty if it was just noise."""
+    import numpy as np
+    audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768
+    if len(audio) < 16000 * 0.3:
+        return ""
+    segments, _ = whisper().transcribe(audio, language="en", beam_size=1, vad_filter=True,
+                                       initial_prompt="A conversation with Jarvis.", condition_on_previous_text=False)
+    # Whisper "hears" words like "Thank you." in background noise; drop segments it isn't sure contain speech.
+    return " ".join(s.text.strip() for s in segments if s.no_speech_prob < 0.6).strip()
+
+
 class Ears:
     def __init__(self):
         import speech_recognition as sr
-        from faster_whisper import WhisperModel
 
         self.sr = sr
         self.recognizer = sr.Recognizer()
@@ -39,8 +64,7 @@ class Ears:
         self.mic = sr.Microphone(sample_rate=16000)
         with self.mic as source:
             self.recognizer.adjust_for_ambient_noise(source, duration=1)
-        # First run downloads the model (~150 MB for base.en).
-        self.model = WhisperModel(config.WHISPER_MODEL, device="cpu", compute_type="int8")
+        self.model = whisper()
 
     def listen(self, timeout=None, phrase_limit=15):
         """Wait for speech and return the transcript, or None if nobody spoke within `timeout` seconds."""

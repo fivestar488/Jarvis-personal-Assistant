@@ -35,6 +35,8 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 
 The HUD also shows a **live news ticker**, a **weather radar** with a 4-day forecast, and your **agenda** for today and tomorrow (once Google Calendar is connected). The ticker mixes 12 outlets so no single viewpoint dominates: Reuters, AP, BBC, DW, PBS NewsHour, Euronews and The Hill, plus Ars Technica, The Verge, TechCrunch, Wired and MIT Technology Review for tech. Opinion pieces and live blogs are left out.
 
+**Speech recognition:** the HUD normally uses Edge's built-in speech recognition. If that isn't available on a PC (Edge's online speech service blocked, or a browser like Opera), Jarvis switches to **his own** automatically. The browser records you, and Whisper turns it into text on the PC. The first time, this downloads about 150 MB, and each command then takes a couple of seconds longer to send.
+
 **Mic not working?** Double-click **`fix-mic.bat`**. It checks Windows' microphone privacy settings, the internet connection to the speech service, whether Edge has blocked the mic for Jarvis, and whether a microphone is plugged in. It fixes what it can and tells you how to fix the rest.
 
 `jarvis.bat` opens the HUD in its own Edge window, because voice input only works in Edge and Chrome. If you close that window, run `jarvis.bat` again to reopen it. Jarvis keeps running in the console window until you close it.

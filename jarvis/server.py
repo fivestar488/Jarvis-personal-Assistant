@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import briefing, config, email_watch, feeds, google_tools, network, notify, security, tools
 from .brain import Brain
-from .voice import synthesize
+from .voice import synthesize, transcribe_pcm, whisper
 
 WEB_DIR = config.ROOT / "web"
 KEY_FILE = config.DATA_DIR / "access_key.txt"
@@ -46,6 +46,8 @@ pending_confirms: dict[str, concurrent.futures.Future] = {}
 held_announcements: list[str] = []  # reminders that fired while no screen was connected
 listen_on_connect = False  # hotkey pressed before the HUD window was open
 loop: asyncio.AbstractEventLoop | None = None
+# Speech-to-text gets its own thread, so slow web requests (news, calendar) can never hold up what you say.
+speech_worker = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="speech")
 brain: Brain | None = None
 busy = asyncio.Lock()
 
@@ -260,6 +262,21 @@ async def snapshot(name: str, key: str):
     if photo.parent != security.SNAPSHOT_DIR or not photo.is_file():  # only files from the security folder
         raise HTTPException(404)
     return FileResponse(photo, media_type="image/jpeg")
+
+
+@app.post("/api/transcribe")
+async def transcribe(key: str, request: Request):
+    """Jarvis's own speech recognition, for browsers whose built-in one doesn't work.
+    The HUD sends one spoken phrase as raw 16 kHz mono 16-bit PCM. An empty body just loads the model."""
+    check_key(key)
+    pcm = await request.body()
+    if len(pcm) > 16000 * 2 * 60:
+        raise HTTPException(413)
+    run = asyncio.get_running_loop().run_in_executor
+    if not pcm:
+        await run(speech_worker, whisper)
+        return {"text": ""}
+    return {"text": await run(speech_worker, transcribe_pcm, pcm)}
 
 
 @app.get("/api/phone")

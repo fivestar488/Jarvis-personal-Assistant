@@ -55,9 +55,11 @@ def _service(name, version):
                 raise NotConnected("The Google sign-in has expired. Tell the user to run: jarvis.bat --connect-google")
             TOKEN_FILE.write_text(creds.to_json())
             _services.clear()
-        if name not in _services:
-            _services[name] = build(name, version, credentials=creds, cache_discovery=False)
-        return _services[name]
+        # One client per thread: Google's HTTP library breaks when two threads share a connection.
+        key = (threading.get_ident(), name)
+        if key not in _services:
+            _services[key] = build(name, version, credentials=creds, cache_discovery=False)
+        return _services[key]
 
 
 def google_tool(description, properties=None, required=()):

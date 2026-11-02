@@ -346,10 +346,114 @@ function answerConfirm(answer) {
 $("#allow").onclick = () => answerConfirm(true);
 $("#deny").onclick = () => answerConfirm(false);
 
-// ---------- speech recognition (browser) ----------
+// ---------- speech recognition ----------
+// Two engines: the browser's own (Edge and Chrome send your voice to an online service), or Jarvis's
+// (the browser records you and Whisper transcribes it on the PC). If the browser's fails, we switch for good.
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const canListen = !!SR && window.isSecureContext;
+const canRecord = !!navigator.mediaDevices?.getUserMedia && window.isSecureContext;
+let engine = store.get("jarvis-stt") === "local" || !SR ? "local" : "browser";
+const canListen = window.isSecureContext && (!!SR || canRecord);
 let rec = null, followUpUntil = 0;
+
+function warmLocalSpeech() {
+  addActivity("Loading Jarvis's speech recognition (the first time downloads about 150 MB)...", true);
+  fetch(`/api/transcribe?key=${encodeURIComponent(KEY)}`, { method: "POST" })
+    .then((r) => addActivity(r.ok ? "Speech recognition ready." : "Speech recognition failed to load.", true))
+    .catch(() => {});
+}
+if (canListen && engine === "local") warmLocalSpeech();
+
+// Jarvis's own speech recognition. It records only while you're talking (plus a moment before, so the
+// first word isn't clipped) and sends each phrase to the PC. To the rest of the code it looks just like
+// the browser's SpeechRecognition: start(), abort(), onresult, onerror, onend.
+const PRE_ROLL_MS = 400, PHRASE_END_MS = 1200, MAX_PHRASE_MS = 25000;
+
+function to16k(input, rate) {
+  const ratio = rate / 16000, out = new Int16Array(Math.floor(input.length / ratio));
+  for (let i = 0; i < out.length; i++) {
+    const a = Math.floor(i * ratio), b = Math.min(input.length, Math.floor((i + 1) * ratio));
+    let s = 0;
+    for (let j = a; j < b; j++) s += input[j];
+    out[i] = Math.max(-1, Math.min(1, s / Math.max(1, b - a))) * 32767;
+  }
+  return out;
+}
+
+class LocalRecognition {
+  start() {
+    this.live = true; this.pending = 0; this.queue = Promise.resolve();
+    this.preroll = []; this.phrase = null; this.floor = null; this.lastEmit = 0;
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      .then((stream) => {
+        this.stream = stream;
+        if (!this.live) return this.release();
+        this.ctx = new AudioContext();
+        this.ctx.resume();
+        this.src = this.ctx.createMediaStreamSource(stream);
+        this.node = this.ctx.createScriptProcessor(2048, 1, 1);
+        this.node.onaudioprocess = (e) => this.process(e.inputBuffer.getChannelData(0));
+        this.src.connect(this.node);
+        this.node.connect(this.ctx.destination);  // outputs silence; needed for it to run
+        this.onaudiostart?.();
+      })
+      .catch((err) => {
+        this.onerror?.({ error: /NotAllowed|Security/.test(err.name) ? "not-allowed" : "audio-capture" });
+        this.abort();
+      });
+  }
+  process(input) {
+    if (!this.live) return;
+    const now = performance.now(), chunkMs = input.length / this.ctx.sampleRate * 1000;
+    let sum = 0;
+    for (const v of input) sum += v * v;
+    const rms = Math.sqrt(sum / input.length);
+    // Follow the room's background level (fast down, slow up) so it works in quiet and noisy rooms.
+    this.floor = this.floor == null ? rms : this.floor + (rms - this.floor) * (rms < this.floor ? 0.3 : 0.002);
+    const loud = rms > Math.max(0.012, this.floor * 3);
+    const chunk = to16k(input, this.ctx.sampleRate);
+    if (!this.phrase) {
+      this.preroll.push(chunk);
+      if (this.preroll.length * chunkMs > PRE_ROLL_MS) this.preroll.shift();
+      if (loud) { this.phrase = this.preroll; this.preroll = []; this.started = this.lastLoud = now; }
+    } else {
+      this.phrase.push(chunk);
+      if (loud) this.lastLoud = now;
+      if (now - this.lastLoud > PHRASE_END_MS || now - this.started > MAX_PHRASE_MS) this.finishPhrase();
+    }
+    // While you're talking or a phrase is being transcribed, keep the command open (like the browser's interim results).
+    if ((this.phrase || this.pending) && now - this.lastEmit > 250) { this.lastEmit = now; this.emit("…", false); }
+  }
+  finishPhrase() {
+    const parts = this.phrase, pcm = new Int16Array(parts.reduce((n, p) => n + p.length, 0));
+    parts.reduce((at, p) => (pcm.set(p, at), at + p.length), 0);
+    this.phrase = null;
+    this.pending++;
+    const result = fetch(`/api/transcribe?key=${encodeURIComponent(KEY)}`, { method: "POST", body: pcm.buffer })
+      .then((r) => (r.ok ? r.json() : { text: "" }))
+      .catch(() => ({ text: "" }));
+    // Deliver phrases in the order you said them, even if a short one finishes transcribing first.
+    this.queue = this.queue.then(() => result).then(({ text }) => {
+      this.pending--;
+      if (this.live && text) this.emit(text + " ", true);
+    });
+  }
+  emit(transcript, isFinal) {
+    const alt = [{ transcript }];
+    alt.isFinal = isFinal;
+    this.onresult?.({ resultIndex: 0, results: [alt] });
+  }
+  release() {
+    this.node?.disconnect(); this.src?.disconnect();
+    this.stream?.getTracks().forEach((t) => t.stop());
+    this.ctx?.close().catch(() => {});
+  }
+  abort() {
+    if (!this.live) return;
+    this.live = false;
+    this.release();
+    this.onend?.();
+  }
+}
 
 if (!canListen) {
   micBtn.classList.add("off");
@@ -365,7 +469,10 @@ const wakeRe = () => new RegExp(`\\b(?:hey |ok |okay )?(${wakeWords.join("|")})\
 function startListening(mode) {
   if (!canListen) return;
   stopListening();
-  const r = new SR();
+  const r = engine === "local" ? new LocalRecognition() : new SR();
+  let switchEngine = false;
+  // Start the "waiting for your first words" clock once the mic is actually on (not while Edge asks for permission).
+  r.onaudiostart = () => { if (capture && !capture.text) armCapture(FIRST_WORDS_MS); };
   r.lang = navigator.language || "en-GB";
   r.interimResults = true;
   r.continuous = true;  // keep going through pauses; we decide when you've finished (see capture below)
@@ -379,17 +486,17 @@ function startListening(mode) {
     mode === "ptt" ? onPushToTalk(final, interim) : onHandsFree(final, interim);
   };
   r.onerror = (e) => {
-    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+    if (engine === "browser" && canRecord && (e.error === "network" || e.error === "service-not-allowed")) {
+      // The browser's online speech service isn't available on this PC (or, in Opera, doesn't exist): use Jarvis's own.
+      switchEngine = true;
+      engine = "local"; store.set("jarvis-stt", "local");
+      addActivity("Browser speech service unavailable. Switched to Jarvis's own speech recognition.", true);
+      warmLocalSpeech();
+    } else if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture") {
       handsFree = false; updateToggles();
-      const msg = "Microphone blocked. Click the lock or mic icon by the address (or ⋯ → Site permissions), set Microphone to Allow, and reload. Also check Windows Settings → Privacy & security → Microphone.";
-      addActivity(msg, true);
-      showSubtitle(msg, true);
-    } else if (e.error === "network") {
-      // Edge and Chrome send speech to an online service; browsers like Opera expose the API with no service behind it.
-      handsFree = false; updateToggles();
-      const msg = /Edg\/|Chrome\//.test(navigator.userAgent) && !/OPR\//.test(navigator.userAgent)
-        ? "Can't reach the speech service. Check the internet connection and any VPN or antivirus web filter. Running fix-mic.bat in the Jarvis folder checks everything."
-        : "Voice input doesn't work in this browser. Open Jarvis in Edge or Chrome, or type instead.";
+      const msg = e.error === "audio-capture"
+        ? "No microphone found. Plug one in, or check Windows Settings → System → Sound → Input."
+        : "Microphone blocked. Click ⋯ (top right) → Site permissions, set Microphone to Allow, and reload. Running fix-mic.bat in the Jarvis folder checks everything.";
       addActivity(msg, true);
       showSubtitle(msg, true);
     }
@@ -398,6 +505,7 @@ function startListening(mode) {
     if (rec !== r) return;  // replaced or stopped on purpose
     rec = null;
     micBtn.classList.remove("active");
+    if (switchEngine) { startListening(mode); return; }  // carry on with the same command on the new engine
     if (capture) {
       // The browser stopped listening while you were mid-command.
       if (mode === "ptt") sendCapture();
@@ -416,13 +524,15 @@ function startListening(mode) {
 // Browsers split speech into chunks at every little pause. Instead of sending the first chunk,
 // we keep adding chunks and only send once you've been quiet for SILENCE_MS.
 const SILENCE_MS = 2200;      // how long you can pause mid-sentence without being cut off
+// Jarvis's own engine already waited for a pause (PHRASE_END_MS) and then for Whisper, so a short wait is enough.
+const silenceMs = () => (engine === "local" ? 600 : SILENCE_MS);
 const FIRST_WORDS_MS = 7000;  // after "Jarvis" alone (or tapping the mic), how long to wait for you to start
 let capture = null;           // { text, timer } while a command is being collected
 
 function startCapture(initial, prompt = "Listening...") {
   capture = { text: initial.trim(), timer: null };
   setState("listening");
-  armCapture(capture.text ? SILENCE_MS : FIRST_WORDS_MS);
+  armCapture(capture.text ? silenceMs() : FIRST_WORDS_MS);
   showCapture("", prompt);
 }
 function armCapture(ms) {
@@ -432,7 +542,7 @@ function armCapture(ms) {
 function feedCapture(final, interim) {
   if (final) capture.text = (capture.text + " " + final).trim();
   showCapture(interim);
-  armCapture(capture.text || interim ? SILENCE_MS : FIRST_WORDS_MS);
+  armCapture(capture.text || interim ? silenceMs() : FIRST_WORDS_MS);
 }
 function showCapture(interim, prompt = "Listening...") {
   const live = (capture.text + " " + (interim || "")).trim();
