@@ -381,11 +381,15 @@ function startListening(mode) {
   r.onerror = (e) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       handsFree = false; updateToggles();
-      addActivity("Microphone access was blocked.", true);
+      const msg = "Microphone blocked. Click the lock or mic icon by the address (or ⋯ → Site permissions), set Microphone to Allow, and reload. Also check Windows Settings → Privacy & security → Microphone.";
+      addActivity(msg, true);
+      showSubtitle(msg, true);
     } else if (e.error === "network") {
-      // Browsers like Opera expose the speech API but have no speech service behind it.
+      // Edge and Chrome send speech to an online service; browsers like Opera expose the API with no service behind it.
       handsFree = false; updateToggles();
-      const msg = "Voice input doesn't work in this browser. Open Jarvis in Edge or Chrome, or type instead.";
+      const msg = /Edg\/|Chrome\//.test(navigator.userAgent) && !/OPR\//.test(navigator.userAgent)
+        ? "Can't reach the speech service. Check the internet connection, and turn on Windows Settings → Privacy & security → Speech → Online speech recognition."
+        : "Voice input doesn't work in this browser. Open Jarvis in Edge or Chrome, or type instead.";
       addActivity(msg, true);
       showSubtitle(msg, true);
     }
