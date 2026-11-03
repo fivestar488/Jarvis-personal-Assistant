@@ -1,5 +1,7 @@
-"""The startup greeting: time of day, the weather, and what's left on today's calendar."""
+"""The startup greeting (time of day, the weather, what's left on today's calendar), and the
+"Wake up, daddy's home" activation that gives the same briefing on demand."""
 import datetime as dt
+import re
 
 from . import config, feeds, google_tools
 
@@ -9,10 +11,31 @@ def _time(iso):
     return dt.datetime.fromisoformat(iso).astimezone().strftime("%I:%M %p").lstrip("0").replace(":00", "")
 
 
-def greeting():
+def _plain(text):
+    """'Jarvis, wake up! Daddy's home.' -> 'wake up daddys home' (no punctuation, no wake word)."""
+    words = re.sub(r"[^a-z ]", " ", text.lower().replace("'", "").replace("’", "")).split()
+    skip = set(config.WAKE_WORDS) | {"hey", "ok", "okay"}
+    while words and words[0] in skip:
+        words.pop(0)
+    while words and words[-1] in skip:
+        words.pop()
+    return " ".join(words)
+
+
+def is_activation(text):
+    """True for "Wake up, daddy's home" and the other power-up phrases (config.ACTIVATION_PHRASES)."""
+    return _plain(text) in {_plain(p) for p in config.ACTIVATION_PHRASES}
+
+
+def welcome_home():
+    """The reply to "Wake up, daddy's home": the line from the film, then the weather and agenda."""
+    return greeting(f"Welcome home, {config.USER_NAME}. All systems are online.")
+
+
+def greeting(opening=None):
     now = dt.datetime.now()
     part = "morning" if now.hour < 12 else "afternoon" if now.hour < 18 else "evening"
-    lines = [f"Good {part}, {config.USER_NAME}. Jarvis online."]
+    lines = [opening or f"Good {part}, {config.USER_NAME}. Jarvis online."]
 
     try:
         w = feeds.weather()

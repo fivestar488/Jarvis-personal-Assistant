@@ -183,6 +183,10 @@ async def handle_message(text, origin):
         if text.lower().strip(" .!") in RESET_PHRASES:
             brain.reset()
             reply = "Fresh start. What can I do for you?"
+        elif briefing.is_activation(text):
+            # "Wake up, daddy's home": the HUD replays its power-up sequence while he answers, no "Thinking...".
+            await broadcast({"type": "activate"})
+            reply = await asyncio.to_thread(briefing.welcome_home)
         else:
             await broadcast({"type": "state", "state": "thinking", "origin": origin, "audio": await thinking_audio()})
             reply = await asyncio.to_thread(brain.respond, text)
@@ -315,7 +319,7 @@ async def websocket(ws: WebSocket, key: str = ""):
     client_id = uuid.uuid4().hex
     clients[client_id] = ws
     await ws.send_json({"type": "hello", "id": client_id, "user": config.USER_NAME, "wake_words": config.WAKE_WORDS,
-                        "hotkey": config.HOTKEY})
+                        "hotkey": config.HOTKEY, "activation": config.ACTIVATION_PHRASES})
     asyncio.create_task(send_greeting(ws))
     while held_announcements:
         text = held_announcements.pop(0)

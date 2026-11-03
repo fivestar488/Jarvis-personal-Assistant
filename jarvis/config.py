@@ -27,6 +27,12 @@ MODEL = os.getenv("JARVIS_MODEL", "claude-opus-5-5")
 EFFORT = os.getenv("JARVIS_EFFORT", "low")
 
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("JARVIS_WAKE_WORDS", "jarvis,jervis,javis,jarvas,travis").split(",")]
+# Say one of these (with or without "Jarvis") and he powers up like in the films: welcome home, weather, agenda.
+# They work in hands-free mode without saying "Jarvis" first. Punctuation and apostrophes don't matter.
+ACTIVATION_PHRASES = [p.strip() for p in (
+    os.getenv("JARVIS_ACTIVATION_PHRASES")
+    or "wake up daddy's home,wake up daddy is home,wake up daddies home,daddy's home,daddy is home,wake up,i'm home,honey i'm home"
+).split(",") if p.strip()]
 VOICE = os.getenv("JARVIS_VOICE", "en-GB-RyanNeural")
 VOICE_RATE = os.getenv("JARVIS_VOICE_RATE", "+5%")     # speed, e.g. -5% or +10%
 VOICE_PITCH = os.getenv("JARVIS_VOICE_PITCH", "+0Hz")  # e.g. -3Hz for deeper

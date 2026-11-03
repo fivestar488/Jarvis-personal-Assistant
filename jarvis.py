@@ -95,6 +95,13 @@ def think(brain, ui, text):
         brain.reset()
         ui.show("Fresh start. What can I do for you?")
         return True
+    from jarvis import briefing
+    if briefing.is_activation(text):  # "Wake up, daddy's home"
+        log("YOU", text)
+        with console.status("[cyan]Waking up...", spinner="dots"):
+            reply = briefing.welcome_home()
+        ui.show(reply)
+        return True
 
     log("YOU", text)
     console.print(f"[cyan]{config.THINKING_PHRASE}[/]")

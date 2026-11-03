@@ -42,20 +42,23 @@ function setState(s) {
   stateLabel.textContent = LABELS[s];
 }
 
-// ---------- boot sequence ----------
-(function boot() {
+// ---------- boot sequence (also replayed by "Wake up, daddy's home") ----------
+function boot(first = true) {
   const lines = [
-    "INITIALIZING J.A.R.V.I.S. ......... OK",
+    first ? "INITIALIZING J.A.R.V.I.S. ......... OK" : "WAKING J.A.R.V.I.S. ................ OK",
     "NEURAL INTERFACE ................... OK",
     "VOICE SYNTHESIS .................... OK",
     "SYSTEM DIAGNOSTICS ................. OK",
     "SECURE UPLINK ...................... OK",
-    "", "ALL SYSTEMS ONLINE",
+    "", first ? "ALL SYSTEMS ONLINE" : "WELCOME HOME",
   ];
   const out = $("#boot-log");
+  out.textContent = "";
+  $("#boot").classList.remove("done");
   lines.forEach((l, i) => setTimeout(() => { out.textContent += l + "\n"; }, 140 + i * 160));
   setTimeout(() => $("#boot").classList.add("done"), 140 + lines.length * 160 + 450);
-})();
+}
+boot();
 
 // ---------- clock ----------
 function tickClock() {
@@ -279,6 +282,7 @@ function handle(ev) {
   switch (ev.type) {
     case "hello":
       myId = ev.id; wakeWords = ev.wake_words || wakeWords; userName = ev.user || userName;
+      activation = (ev.activation || []).map(bareWords);
       if (ev.hotkey && canListen) micBtn.title = `Push to talk (or press ${ev.hotkey.toUpperCase()} in any app)`;
       addActivity("Secure uplink established.", true);
       break;
@@ -316,6 +320,10 @@ function handle(ev) {
       if (!$("#phone").hidden) showPhone(ev, true);
       else if (ev.online) phoneBtn.classList.add("ping");
       addActivity(ev.online ? `Network changed to ${ev.network}. New phone code ready.` : "Network lost.", true);
+      break;
+    case "activate":  // "Wake up, daddy's home"
+      boot(false);
+      blip(440, 0.12); setTimeout(() => blip(660, 0.12), 140); setTimeout(() => blip(990, 0.18), 280);
       break;
     case "listen":  // global hotkey pressed: same as tapping the mic
       micBtn.onclick();
@@ -479,6 +487,18 @@ if (!canListen) {
 
 const wakeRe = () => new RegExp(`\\b(?:hey |ok |okay )?(${wakeWords.join("|")})\\b[\\s,.!?]*`, "i");
 
+// "Wake up, daddy's home" and the other power-up phrases (sent by the PC). Compared without punctuation or
+// the wake word, the same way the PC does (briefing.is_activation), so they work without saying "Jarvis" first.
+let activation = [];
+function bareWords(text) {
+  const words = text.toLowerCase().replace(/['’]/g, "").replace(/[^a-z ]/g, " ").split(/\s+/).filter(Boolean);
+  const skip = new Set([...wakeWords, "hey", "ok", "okay"]);
+  while (words.length && skip.has(words[0])) words.shift();
+  while (words.length && skip.has(words[words.length - 1])) words.pop();
+  return words.join(" ");
+}
+const isActivation = (text) => activation.includes(bareWords(text));
+
 function startListening(mode) {
   if (!canListen) return;
   stopListening();
@@ -611,6 +631,7 @@ function onHandsFree(final, interim) {
     addActivity("Interrupted.", true);
     if (!final) { showSubtitle(text, true); return; }
   }
+  if (final && !capture && isActivation(final)) { submit(final); return; }
   if (capture) {
     // Mid-command: everything you say counts until you pause.
     feedCapture(final.replace(wakeRe(), " "), interim);
