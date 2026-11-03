@@ -28,8 +28,8 @@ def is_activation(text):
 
 
 def welcome_home():
-    """The reply to "Wake up, daddy's home": the line from the film, then the weather and agenda."""
-    return greeting(f"Welcome home, {config.USER_NAME}. All systems are online.")
+    """The reply to "Wake up, daddy's home": welcome back, then the weather and agenda."""
+    return greeting(f"Welcome back, {config.USER_NAME}. All systems are online.")
 
 
 def greeting(opening=None):

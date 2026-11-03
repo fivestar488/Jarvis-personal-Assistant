@@ -50,7 +50,7 @@ function boot(first = true) {
     "VOICE SYNTHESIS .................... OK",
     "SYSTEM DIAGNOSTICS ................. OK",
     "SECURE UPLINK ...................... OK",
-    "", first ? "ALL SYSTEMS ONLINE" : "WELCOME HOME",
+    "", first ? "ALL SYSTEMS ONLINE" : "WELCOME BACK",
   ];
   const out = $("#boot-log");
   out.textContent = "";
@@ -263,7 +263,7 @@ function send(obj) {
   return false;
 }
 
-// spoken = it came from the mic. A spoken "Wake up, daddy's home" also needs a clap (see waitForClap).
+// spoken = it came from the mic. A spoken "Wake up, daddy's home" also needs a clap (see clap to wake).
 function submit(text, spoken = false) {
   text = text.trim();
   if (!text) return;
@@ -271,8 +271,9 @@ function submit(text, spoken = false) {
   cancelClapWait();
   initAudio();
   if (spoken && clapToWake && isActivation(text)) {
-    stopListening();
     input.value = "";
+    if (Date.now() - lastClap < CLAP_WINDOW_MS) { lastClap = 0; submit(text); return; }  // clapped first
+    stopListening();
     waitForClap(text);
     return;
   }
@@ -287,41 +288,55 @@ function submit(text, spoken = false) {
 }
 
 // ---------- clap to wake ----------
-// After a spoken "Wake up, daddy's home", Jarvis listens for a clap for a few seconds before powering up.
+// A spoken "Wake up, daddy's home" only counts with a clap, in either order, within a few seconds of each
+// other. Whenever Jarvis is listening (or waiting for that clap), a clap detector runs alongside and
+// remembers the last clap. It all happens quietly: no prompts on screen.
 // A clap is (1) instant: quiet to loud within one ~20 ms frame, (2) a crack: lots of high-pitched energy,
 // where voices are mostly low, and (3) short: gone within ~120 ms. Speech can pass one test, rarely all three.
-const CLAP_WAIT_MS = 5000;
-let clapToWake = true, clapWait = null;
+const CLAP_WINDOW_MS = 5000;
+let clapToWake = true, clapWait = null, clapEar = null, lastClap = 0;
 
-function cancelClapWait() {
+function heardClap() {
+  lastClap = Date.now();
   if (!clapWait) return;
-  const w = clapWait;
-  clapWait = null;
-  w.done = true;
-  clearTimeout(w.timer);
-  w.release?.();
+  const text = clapWait.text;
+  cancelClapWait();
+  lastClap = 0;
+  submit(text);
 }
 
 function waitForClap(text) {
-  const wait = clapWait = { done: false };
   setState("listening");
-  showSubtitle("Clap to wake me...", true);
-  blip(700, 0.05);
-  const finish = (clapped) => {
-    if (wait.done) return;
+  clapWait = { text, timer: setTimeout(() => {
     cancelClapWait();
-    if (clapped) { addActivity("Clap detected.", true); submit(text); return; }
     setState("idle");
-    showSubtitle("No clap heard. Standing by.", true);
     if (handsFree) startListening("hands");
-  };
-  wait.timer = setTimeout(() => finish(false), CLAP_WAIT_MS);
+  }, CLAP_WINDOW_MS) };
+  syncClapEar();
+}
+
+function cancelClapWait() {
+  if (!clapWait) return;
+  clearTimeout(clapWait.timer);
+  clapWait = null;
+  syncClapEar();
+}
+
+// Keep the clap detector running exactly while it's needed.
+function syncClapEar() {
+  const needed = clapToWake && canRecord && activation.length && (handsFree || rec || clapWait);
+  if (needed && !clapEar) startClapEar();
+  else if (!needed && clapEar) { clapEar.stop(); clapEar = null; }
+}
+
+function startClapEar() {
+  const ear = clapEar = { stopped: false, stop() { this.stopped = true; this.release?.(); } };
   // Raw sound (no noise suppression), which would otherwise soften the clap.
   navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
     .then((stream) => {
-      if (wait.done) return stream.getTracks().forEach((t) => t.stop());
+      if (ear.stopped) return stream.getTracks().forEach((t) => t.stop());
       const ctx = new AudioContext(), src = ctx.createMediaStreamSource(stream), node = ctx.createScriptProcessor(1024, 1, 1);
-      wait.release = () => { node.disconnect(); src.disconnect(); stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); };
+      ear.release = () => { node.disconnect(); src.disconnect(); stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); };
       let floor = 0.01, prev = 0, prev2 = 0, peak = 0, peakAt = 0, frame = 0;
       node.onaudioprocess = (e) => {
         const x = e.inputBuffer.getChannelData(0);
@@ -333,7 +348,7 @@ function waitForClap(text) {
         frame++;
         if (peak) {
           if (rms > peak) { peak = rms; return; }
-          if (rms < peak * 0.25) return finish(true);            // died away fast: a clap
+          if (rms < peak * 0.25) { peak = 0; heardClap(); }      // died away fast: a clap
           if ((frame - peakAt) * frameMs > 120) peak = 0;         // still loud: a voice or music, not a clap
         } else if (frame > 3 && rms > Math.max(0.04, floor * 8) && Math.min(prev, prev2) < rms / 4 && crack > 0.25) {
           peak = rms; peakAt = frame;  // (the frame before may hold the clap's first few ms, so check two back)
@@ -345,7 +360,7 @@ function waitForClap(text) {
       src.connect(node);
       node.connect(ctx.destination);
     })
-    .catch(() => finish(false));
+    .catch(() => { if (clapEar === ear) clapEar = null; });
 }
 
 function handle(ev) {
@@ -609,6 +624,7 @@ function startListening(mode) {
     if (rec !== r) return;  // replaced or stopped on purpose
     rec = null;
     micBtn.classList.remove("active");
+    syncClapEar();
     if (switchEngine) { startListening(mode); return; }  // carry on with the same command on the new engine
     if (capture) {
       // The browser stopped listening while you were mid-command.
@@ -621,6 +637,7 @@ function startListening(mode) {
   };
   rec = r;
   try { r.start(); } catch { rec = null; return; }
+  syncClapEar();
   if (mode === "ptt") { micBtn.classList.add("active"); if (!capture) startCapture(""); }
 }
 
@@ -673,6 +690,7 @@ function stopListening() {
   const r = rec; rec = null;
   micBtn.classList.remove("active");
   try { r.abort(); } catch {}
+  syncClapEar();
 }
 
 function onPushToTalk(final, interim) {
@@ -760,6 +778,7 @@ handsBtn.onclick = () => {
   initAudio();
   handsFree = !handsFree;
   updateToggles();
+  syncClapEar();
   if (handsFree) {
     addActivity(`Hands-free on. Say "${wakeWords[0][0].toUpperCase() + wakeWords[0].slice(1)}, ..."`, true);
     if (state === "idle") startListening("hands");
