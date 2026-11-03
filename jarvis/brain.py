@@ -8,10 +8,14 @@ import anthropic
 
 from . import config, tools
 
+# Opus and Sonnet get the newest web tools and server-side refusal fallbacks. Haiku (the cheapest model)
+# gets the standard web tools and no fallbacks, which it doesn't support.
+_HAIKU = "haiku" in config.MODEL
 SERVER_TOOLS = [
-    {"type": "web_search_20260209", "name": "web_search"},
-    {"type": "web_fetch_20260209", "name": "web_fetch"},
+    {"type": "web_search_20250305" if _HAIKU else "web_search_20260209", "name": "web_search"},
+    {"type": "web_fetch_20250910" if _HAIKU else "web_fetch_20260209", "name": "web_fetch"},
 ]
+FALLBACKS = {} if _HAIKU else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
 MAX_STEPS = 25
 
 # Memory across restarts: a plain-text copy of recent exchanges, read back in when Jarvis starts.
@@ -131,6 +135,9 @@ class Brain:
                 return "I'm being rate limited at the moment. Give me a few seconds and try again."
             if isinstance(e, anthropic.APIConnectionError):
                 return "I can't reach my brain. Please check the internet connection."
+            if isinstance(e, anthropic.BadRequestError) and "credit balance" in str(e.message).lower():
+                return ("My API credit has run out, sir. Top it up at console.anthropic.com, under Settings, "
+                        "Billing, and I'll be right back.")
             return f"Something went wrong on the API side: {e.message}"
 
     def ask(self, text):
@@ -145,8 +152,7 @@ class Brain:
                 messages=self.messages,
                 output_config={"effort": config.EFFORT},
                 cache_control={"type": "ephemeral"},
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
+                **FALLBACKS,
             )
             self.messages.append({"role": "assistant", "content": response.content})
 
