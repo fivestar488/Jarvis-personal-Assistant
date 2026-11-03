@@ -30,7 +30,7 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 - **NEW SESSION** clears the conversation, including the saved copy. Long-term memories are kept.
 - **Memory across restarts:** Jarvis saves your recent conversation, so after a restart he still knows what you were talking about.
 - **Startup greeting:** when Jarvis starts, he greets you out loud with the weather and what's left on today's calendar.
-- **"Wake up, daddy's home"**: just like in the film, the HUD replays its power-up sequence and Jarvis answers "Welcome home, sir", then gives the weather and your agenda. "I'm home" and "Wake up, Jarvis" work too. In hands-free mode you don't need to say "Jarvis" first. You can set your own phrases with `JARVIS_ACTIVATION_PHRASES` in `.env`.
+- **"Wake up, daddy's home"**: just like in the film, the HUD replays its power-up sequence and Jarvis answers "Welcome home, sir", then gives the weather and your agenda. "I'm home" and "Wake up, Jarvis" work too. In hands-free mode you don't need to say "Jarvis" first. **When you say it, clap once** within 5 seconds. Jarvis only powers up when he hears both, so the TV can't wake him (typing the phrase doesn't need a clap). You can set your own phrases with `JARVIS_ACTIVATION_PHRASES` in `.env`, or turn the clap off with `JARVIS_CLAP_TO_WAKE=off`.
 - **Quick buttons** under the reactor: **BRIEFING, EMAILS, AGENDA, WEATHER, NEWS, SCREEN**. One click each.
 - **Ctrl+Alt+J** in any app brings up Jarvis and starts listening. Press it again to send straight away.
 - **THEME** switches between **MARK** (the suit's red and gold, with a blue arc reactor) and **JARVIS** (the blue hologram look).

@@ -319,7 +319,7 @@ async def websocket(ws: WebSocket, key: str = ""):
     client_id = uuid.uuid4().hex
     clients[client_id] = ws
     await ws.send_json({"type": "hello", "id": client_id, "user": config.USER_NAME, "wake_words": config.WAKE_WORDS,
-                        "hotkey": config.HOTKEY, "activation": config.ACTIVATION_PHRASES})
+                        "hotkey": config.HOTKEY, "activation": config.ACTIVATION_PHRASES, "clap_to_wake": config.CLAP_TO_WAKE})
     asyncio.create_task(send_greeting(ws))
     while held_announcements:
         text = held_announcements.pop(0)

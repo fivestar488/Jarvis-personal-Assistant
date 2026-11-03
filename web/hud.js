@@ -263,19 +263,89 @@ function send(obj) {
   return false;
 }
 
-function submit(text) {
+// spoken = it came from the mic. A spoken "Wake up, daddy's home" also needs a clap (see waitForClap).
+function submit(text, spoken = false) {
   text = text.trim();
   if (!text) return;
   cancelCapture();
+  cancelClapWait();
   initAudio();
+  if (spoken && clapToWake && isActivation(text)) {
+    stopListening();
+    input.value = "";
+    waitForClap(text);
+    return;
+  }
   if (send({ type: "message", text })) {
     blip(1200, 0.05);
     stopListening();
     followUpUntil = 0;
     input.value = "";
     setState("thinking");
-    showSubtitle("Thinking...", true);
+    showSubtitle(isActivation(text) ? "Waking up..." : "Thinking...", true);
   }
+}
+
+// ---------- clap to wake ----------
+// After a spoken "Wake up, daddy's home", Jarvis listens for a clap for a few seconds before powering up.
+// A clap is (1) instant: quiet to loud within one ~20 ms frame, (2) a crack: lots of high-pitched energy,
+// where voices are mostly low, and (3) short: gone within ~120 ms. Speech can pass one test, rarely all three.
+const CLAP_WAIT_MS = 5000;
+let clapToWake = true, clapWait = null;
+
+function cancelClapWait() {
+  if (!clapWait) return;
+  const w = clapWait;
+  clapWait = null;
+  w.done = true;
+  clearTimeout(w.timer);
+  w.release?.();
+}
+
+function waitForClap(text) {
+  const wait = clapWait = { done: false };
+  setState("listening");
+  showSubtitle("Clap to wake me...", true);
+  blip(700, 0.05);
+  const finish = (clapped) => {
+    if (wait.done) return;
+    cancelClapWait();
+    if (clapped) { addActivity("Clap detected.", true); submit(text); return; }
+    setState("idle");
+    showSubtitle("No clap heard. Standing by.", true);
+    if (handsFree) startListening("hands");
+  };
+  wait.timer = setTimeout(() => finish(false), CLAP_WAIT_MS);
+  // Raw sound (no noise suppression), which would otherwise soften the clap.
+  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } })
+    .then((stream) => {
+      if (wait.done) return stream.getTracks().forEach((t) => t.stop());
+      const ctx = new AudioContext(), src = ctx.createMediaStreamSource(stream), node = ctx.createScriptProcessor(1024, 1, 1);
+      wait.release = () => { node.disconnect(); src.disconnect(); stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); };
+      let floor = 0.01, prev = 0, prev2 = 0, peak = 0, peakAt = 0, frame = 0;
+      node.onaudioprocess = (e) => {
+        const x = e.inputBuffer.getChannelData(0);
+        let sum = 0, dsum = 0;
+        for (let i = 0; i < x.length; i++) { sum += x[i] * x[i]; if (i) dsum += (x[i] - x[i - 1]) ** 2; }
+        const rms = Math.sqrt(sum / x.length), frameMs = x.length / ctx.sampleRate * 1000;
+        // How "crackly" the sound is: sample-to-sample change vs. loudness (high pitch changes fast).
+        const crack = Math.sqrt(dsum / x.length) / (rms || 1);
+        frame++;
+        if (peak) {
+          if (rms > peak) { peak = rms; return; }
+          if (rms < peak * 0.25) return finish(true);            // died away fast: a clap
+          if ((frame - peakAt) * frameMs > 120) peak = 0;         // still loud: a voice or music, not a clap
+        } else if (frame > 3 && rms > Math.max(0.04, floor * 8) && Math.min(prev, prev2) < rms / 4 && crack > 0.25) {
+          peak = rms; peakAt = frame;  // (the frame before may hold the clap's first few ms, so check two back)
+        } else {
+          floor = floor * 0.95 + rms * 0.05;
+        }
+        prev2 = prev; prev = rms;
+      };
+      src.connect(node);
+      node.connect(ctx.destination);
+    })
+    .catch(() => finish(false));
 }
 
 function handle(ev) {
@@ -283,6 +353,7 @@ function handle(ev) {
     case "hello":
       myId = ev.id; wakeWords = ev.wake_words || wakeWords; userName = ev.user || userName;
       activation = (ev.activation || []).map(bareWords);
+      clapToWake = ev.clap_to_wake !== false;
       if (ev.hotkey && canListen) micBtn.title = `Push to talk (or press ${ev.hotkey.toUpperCase()} in any app)`;
       addActivity("Secure uplink established.", true);
       break;
@@ -587,7 +658,7 @@ function sendCapture() {
   clearTimeout(capture.timer);
   const text = capture.text.replace(/^[\s,.!?]+|[\s,.!?]+$/g, "");
   capture = null;
-  if (text) submit(text);
+  if (text) submit(text, true);
   else {
     if (rec && rec.mode === "ptt") stopListening();
     if (state === "listening") setState("idle");
@@ -631,7 +702,7 @@ function onHandsFree(final, interim) {
     addActivity("Interrupted.", true);
     if (!final) { showSubtitle(text, true); return; }
   }
-  if (final && !capture && isActivation(final)) { submit(final); return; }
+  if (final && !capture && isActivation(final)) { submit(final, true); return; }
   if (capture) {
     // Mid-command: everything you say counts until you pause.
     feedCapture(final.replace(wakeRe(), " "), interim);
@@ -660,6 +731,7 @@ function onHandsFree(final, interim) {
 
 micBtn.onclick = () => {
   initAudio();
+  cancelClapWait();
   if (!canListen) { input.focus(); return; }
   if (currentSrc) stopAudio();
   if (capture) { sendCapture(); return; }  // tap again while talking = send now, don't wait for the pause

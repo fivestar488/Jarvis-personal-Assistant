@@ -33,6 +33,8 @@ ACTIVATION_PHRASES = [p.strip() for p in (
     os.getenv("JARVIS_ACTIVATION_PHRASES")
     or "wake up daddy's home,wake up daddy is home,wake up daddies home,daddy's home,daddy is home,wake up,i'm home,honey i'm home"
 ).split(",") if p.strip()]
+# In the HUD, a spoken power-up phrase only counts once you clap (so the TV can't wake him). Typed ones don't need it.
+CLAP_TO_WAKE = os.getenv("JARVIS_CLAP_TO_WAKE", "on").lower() not in ("off", "false", "0", "no")
 VOICE = os.getenv("JARVIS_VOICE", "en-GB-RyanNeural")
 VOICE_RATE = os.getenv("JARVIS_VOICE_RATE", "+5%")     # speed, e.g. -5% or +10%
 VOICE_PITCH = os.getenv("JARVIS_VOICE_PITCH", "+0Hz")  # e.g. -3Hz for deeper
