@@ -2,3 +2,5 @@
 data/
 __pycache__/
 voice_samples/
+# Jake's own Claude Code setup (email digest + feature scout agents): personal, not part of Jarvis
+.claude/
