@@ -31,6 +31,8 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 - **Memory across restarts:** Jarvis saves your recent conversation, so after a restart he still knows what you were talking about.
 - **Startup greeting:** when Jarvis starts, he greets you out loud with the weather and what's left on today's calendar.
 - **"Wake up, daddy's home" + a clap**: clap and say it, in either order, within 5 seconds of each other. The HUD replays its power-up sequence and Jarvis answers "Welcome back, sir", then gives the weather and your agenda. "I'm home" and "Wake up, Jarvis" work too. He only powers up when he hears both, so the TV can't wake him. A clap before the phrase only counts if Jarvis is already listening (hands-free on, or after tapping 🎤). In hands-free mode you don't need to say "Jarvis" first. Typing the phrase doesn't need a clap. You can set your own phrases with `JARVIS_ACTIVATION_PHRASES` in `.env`, or turn the clap off with `JARVIS_CLAP_TO_WAKE=off`.
+- **Meeting briefs:** 10 minutes before each calendar event, Jarvis tells you on the PC and your phone what it is, who's coming, where it is, and anything in its notes. With credit available, he also mentions a related email if one is clearly about it. Change the timing with `JARVIS_MEETING_BRIEF_MINUTES` (`0` = off).
+- **Personalities:** "Jarvis, be concise", "sarcastic mode", "be more formal", "talk like a pirate", "back to normal". He remembers your choice after a restart.
 - **Quick buttons** under the reactor: **BRIEFING, EMAILS, AGENDA, WEATHER, NEWS, SCREEN**. One click each.
 - **Ctrl+Alt+J** in any app brings up Jarvis and starts listening. Press it again to send straight away.
 - **THEME** switches between **MARK** (the suit's red and gold, with a blue arc reactor) and **JARVIS** (the blue hologram look).
@@ -107,6 +109,17 @@ Without this, Jarvis can still tell you what's playing and pause or skip. Connec
 4. Run `jarvis.bat --connect-spotify` and click **Agree** in the browser.
 
 Starting playback on demand ("play my liked songs") needs **Spotify Premium**. On a free account, Jarvis opens the song in Spotify for you to press play.
+
+## Telegram (optional, about 3 minutes)
+
+Message Jarvis from anywhere, even with Tailscale off, and get his alerts (reminders, important emails, meeting briefs, security photos) in Telegram. When he needs permission for something, you get **Allow / Deny** buttons.
+
+1. In Telegram, open **@BotFather** (the official one, with a blue tick), send `/newbot`, and pick a name and a username ending in `bot`.
+2. BotFather replies with a **token** (like `123456789:AA...`). Paste it in `.env` after `JARVIS_TELEGRAM_TOKEN=`, and keep it secret.
+3. Restart Jarvis. The console shows a line like `send /pair 123456 to your bot`.
+4. Open your new bot in Telegram and send that `/pair` message. It replies "Paired".
+
+From then on the bot only answers you and ignores everyone else. After 5 wrong pairing codes it locks until Jarvis restarts. To move it to a different Telegram account, delete `data/telegram_owner.json` and pair again. Jarvis must be running on the PC (in HUD mode, `jarvis.bat`) for the bot to answer.
 
 ## Things to try
 

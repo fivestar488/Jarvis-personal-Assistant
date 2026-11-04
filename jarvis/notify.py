@@ -28,6 +28,8 @@ def alert(title, message, image_path=None, speak=True):
         from .server import access_key
         image_url = f"{public_base_url}/api/snapshot/{image_path.name}?key={access_key()}"
     threading.Thread(target=push, args=(title, message, image_url), daemon=True).start()
+    from . import telegram_bot
+    threading.Thread(target=telegram_bot.alert, args=(title, message, image_path), daemon=True).start()
 
 
 # ---------------------------------------------------------------- web push

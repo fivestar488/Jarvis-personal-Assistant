@@ -192,6 +192,10 @@ def list_events(start, end):
                 "id": e["id"], "calendar_id": c["id"], "title": e.get("summary", "(no title)"),
                 "start": s, "end": f, "all_day": all_day, "location": e.get("location", ""),
                 "calendar": c.get("summaryOverride") or c.get("summary", ""),
+                "description": (e.get("description") or "")[:1500],
+                "attendees": [{"email": a.get("email", ""), "name": a.get("displayName", ""), "self": a.get("self", False),
+                               "resource": a.get("resource", False), "response": a.get("responseStatus", "")}
+                              for a in e.get("attendees", [])],
             })
     return sorted(events, key=lambda e: (e["start"][:10], not e["all_day"], e["start"]))
 

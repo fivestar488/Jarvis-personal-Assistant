@@ -30,6 +30,10 @@ HELPER_MODEL = os.getenv("JARVIS_HELPER_MODEL") or "claude-haiku-5-5"
 # Daily API budget in dollars: a warning at 80%, and at 100% the cheapest model and no background jobs until
 # midnight (he still answers). 0 = no budget.
 DAILY_BUDGET = float(os.getenv("JARVIS_DAILY_BUDGET") or 1.00)
+# Minutes before each calendar event that Jarvis briefs you on it (0 = off).
+MEETING_BRIEF_MINUTES = int(os.getenv("JARVIS_MEETING_BRIEF_MINUTES") or 10)
+# Your private Telegram bot's token from @BotFather (blank = Telegram off). See "Telegram" in the README.
+TELEGRAM_TOKEN = os.getenv("JARVIS_TELEGRAM_TOKEN", "").strip()
 # After this long without a command, Jarvis starts a fresh conversation instead of re-sending the old one.
 IDLE_RESET_MINUTES = int(os.getenv("JARVIS_IDLE_RESET_MINUTES") or 60)
 

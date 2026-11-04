@@ -17,7 +17,8 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import briefing, config, email_watch, feeds, google_tools, network, notify, security, spend, tools
+from . import (briefing, config, email_watch, feeds, google_tools, meetings, network, notify, security, spend,
+               telegram_bot, tools)
 from .brain import Brain
 from .voice import synthesize, transcribe_pcm, warm_whisper
 
@@ -34,6 +35,8 @@ async def lifespan(_app):
     brain = Brain(mode="hud", on_status=lambda s: from_thread(broadcast({"type": "status", "text": s})))
     tools.start_reminders()
     email_watch.start()
+    meetings.start()
+    telegram_bot.start(on_message=telegram_message, on_answer=answer_confirm)
     watcher = asyncio.create_task(watch_network())
     yield
     watcher.cancel()
@@ -134,6 +137,7 @@ class HudInterface:
         future = concurrent.futures.Future()
         pending_confirms[cid] = future
         from_thread(broadcast({"type": "confirm", "id": cid, "question": question}))
+        telegram_bot.ask_confirm(cid, question)  # Allow / Deny buttons on your phone too, if Telegram is set up
         try:
             return future.result(timeout=120)
         except concurrent.futures.TimeoutError:
@@ -141,6 +145,7 @@ class HudInterface:
         finally:
             pending_confirms.pop(cid, None)
             from_thread(broadcast({"type": "confirm_done", "id": cid}))
+            telegram_bot.confirm_done(cid)
 
     def announce(self, text):
         async def send():
@@ -191,6 +196,22 @@ async def handle_message(text, origin):
             await broadcast({"type": "state", "state": "thinking", "origin": origin, "audio": await thinking_audio()})
             reply = await asyncio.to_thread(brain.respond, text)
         await broadcast({"type": "reply", "text": reply, "audio": await voice_for(reply), "origin": origin})
+        return reply
+
+
+def telegram_message(text):
+    """A message from your Telegram bot (runs in its thread): handled like one typed into the HUD."""
+    return from_thread(handle_message(text, origin="telegram")).result(timeout=600)
+
+
+def answer_confirm(cid, allowed):
+    """An Allow / Deny answer from Telegram."""
+    future = pending_confirms.get(cid)
+    if future and not future.done():
+        try:
+            future.set_result(allowed)
+        except concurrent.futures.InvalidStateError:
+            pass  # answered on the PC at the same moment
 
 
 @app.get("/")

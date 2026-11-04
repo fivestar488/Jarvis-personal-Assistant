@@ -53,9 +53,10 @@ def greeting():
 
 
 def start_background_services():
-    from jarvis import email_watch
+    from jarvis import email_watch, meetings
     tools.start_reminders()
     email_watch.start()
+    meetings.start()
 
 
 class Interface:
