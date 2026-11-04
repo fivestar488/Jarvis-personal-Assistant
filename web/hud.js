@@ -843,7 +843,13 @@ async function pollStats() {
     }
     $("#uptime").textContent = s.uptime;
     $("#procs").textContent = s.processes;
-    $("#mini-stats").textContent = `CPU ${Math.round(s.cpu)}%  ·  RAM ${Math.round(s.ram)}%` + (s.battery != null ? `  ·  PWR ${s.battery}%` : "");
+    const money = (usd) => "$" + (usd < 10 ? usd.toFixed(2) : usd.toFixed(0));
+    const sp = s.spend, over = sp.budget && sp.today >= sp.budget;
+    $("#spend-today").textContent = money(sp.today) + (sp.budget ? ` / ${money(sp.budget)}` : "");
+    $("#spend-today").classList.toggle("warn", !!sp.budget && sp.today >= 0.8 * sp.budget);
+    $("#spend-today").title = over ? "Budget used up: cheapest model, email watch paused until midnight" : `${sp.calls_today} API calls today`;
+    $("#spend-month").textContent = money(sp.month);
+    $("#mini-stats").textContent = `CPU ${Math.round(s.cpu)}%  ·  RAM ${Math.round(s.ram)}%` + (s.battery != null ? `  ·  PWR ${s.battery}%` : "") + `  ·  API ${money(sp.today)}`;
   } catch {}
 }
 pollStats(); setInterval(pollStats, 3000);

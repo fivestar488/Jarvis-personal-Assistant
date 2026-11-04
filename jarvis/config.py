@@ -27,6 +27,9 @@ MODEL = os.getenv("JARVIS_MODEL", "claude-opus-5-5")
 EFFORT = os.getenv("JARVIS_EFFORT", "low")
 # Background jobs (sorting new emails) always use the cheapest model, whatever MODEL is set to.
 HELPER_MODEL = os.getenv("JARVIS_HELPER_MODEL") or "claude-haiku-5-5"
+# Daily API budget in dollars: a warning at 80%, and at 100% the cheapest model and no background jobs until
+# midnight (he still answers). 0 = no budget.
+DAILY_BUDGET = float(os.getenv("JARVIS_DAILY_BUDGET") or 1.00)
 # After this long without a command, Jarvis starts a fresh conversation instead of re-sending the old one.
 IDLE_RESET_MINUTES = int(os.getenv("JARVIS_IDLE_RESET_MINUTES") or 60)
 

@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import briefing, config, email_watch, feeds, google_tools, network, notify, security, tools
+from . import briefing, config, email_watch, feeds, google_tools, network, notify, security, spend, tools
 from .brain import Brain
 from .voice import synthesize, transcribe_pcm, warm_whisper
 
@@ -307,6 +307,7 @@ async def stats(key: str):
         "charging": battery.power_plugged if battery else None,
         "processes": len(psutil.pids()),
         "uptime": str(dt.datetime.now() - dt.datetime.fromtimestamp(psutil.boot_time())).split(".")[0],
+        "spend": spend.summary(),
     }
 
 

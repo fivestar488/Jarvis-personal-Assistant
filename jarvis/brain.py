@@ -7,16 +7,21 @@ import time
 
 import anthropic
 
-from . import config, tools
+from . import config, spend, tools
 
-# Opus and Sonnet get the newest web tools and server-side refusal fallbacks. Haiku (the cheapest model)
-# gets the standard web tools and no fallbacks, which it doesn't support.
-_HAIKU = "haiku" in config.MODEL
-SERVER_TOOLS = [
-    {"type": "web_search_20250305" if _HAIKU else "web_search_20260209", "name": "web_search"},
-    {"type": "web_fetch_20250910" if _HAIKU else "web_fetch_20260209", "name": "web_fetch"},
-]
-FALLBACKS = {} if _HAIKU else {"fallbacks": "default"}
+
+def model_options(model):
+    """Web tools, betas and fallbacks for a model. Opus and Sonnet get the newest web tools and server-side
+    refusal fallbacks. Haiku (the cheapest model) gets the standard web tools and no fallbacks, which it
+    doesn't support."""
+    betas = ["context-management-2025-06-27"]
+    if "haiku" in model:
+        web = [{"type": "web_search_20250305", "name": "web_search"}, {"type": "web_fetch_20250910", "name": "web_fetch"}]
+        return web, betas, {}
+    web = [{"type": "web_search_20260209", "name": "web_search"}, {"type": "web_fetch_20260209", "name": "web_fetch"}]
+    return web, betas + ["server-side-fallback-2026-07-01"], {"fallbacks": "default"}
+
+
 # Once a conversation gets long, the API clears old tool results (screenshots, webcam photos, long command
 # output) so they aren't paid for again on every turn, keeping the most recent few. It's done server-side,
 # so the history we send stays unchanged: the newest models refuse a history that was edited client-side.
@@ -26,7 +31,6 @@ CONTEXT_EDITING = {"edits": [{
     "keep": {"type": "tool_uses", "value": 4},
     "clear_at_least": {"type": "input_tokens", "value": 5000},  # clearing resets the cache, so make it worth it
 }]}
-BETAS = ["context-management-2025-06-27"] + ([] if _HAIKU else ["server-side-fallback-2026-07-01"])
 MAX_STEPS = 25
 
 # Memory across restarts: a plain-text copy of recent exchanges, read back in when Jarvis starts.
@@ -166,19 +170,22 @@ class Brain:
     def ask(self, text):
         """Send one user request; returns Jarvis's final spoken/printed reply."""
         self.messages.append({"role": "user", "content": text})
+        model = spend.current_model()  # the cheapest model once today's budget is used up
+        web_tools, betas, fallbacks = model_options(model)
         for _ in range(MAX_STEPS):
             response = self.client.beta.messages.create(
-                model=config.MODEL,
+                model=model,
                 max_tokens=16000,
                 system=self.system,
-                tools=tools.schemas() + SERVER_TOOLS,
+                tools=tools.schemas() + web_tools,
                 messages=self.messages,
                 output_config={"effort": config.EFFORT},
                 cache_control={"type": "ephemeral"},
                 context_management=CONTEXT_EDITING,
-                betas=BETAS,
-                **FALLBACKS,
+                betas=betas,
+                **fallbacks,
             )
+            spend.record(response.model or model, response.usage, "chat")
             self.messages.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason == "refusal":

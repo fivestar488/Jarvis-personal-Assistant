@@ -196,6 +196,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 0; }
 .readouts dt { font-size: 11px; letter-spacing: .25em; color: var(--muted); }
 .readouts dd { margin: 2px 0 0; font-family: var(--hud-font); font-size: 13px; color: var(--cyan-hi); }
+.readouts dd.warn { color: var(--amber); }  /* API spend past 80% of the daily budget */
 
 #activity { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; font-size: 14px; }
 #activity li {
