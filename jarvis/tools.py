@@ -127,7 +127,9 @@ def open_application(name):
 def close_application(name):
     import psutil
     key = name.lower().replace(".exe", "").replace(" ", "")
-    procs = [p for p in psutil.process_iter(["name"]) if p.info["name"] and key in p.info["name"].lower().replace(" ", "")]
+    if not key:  # an empty name would match every running process
+        return "Say which app to close. Nothing was closed."
+    procs =[p for p in psutil.process_iter(["name"]) if p.info["name"] and key in p.info["name"].lower().replace(" ", "")]
     if not procs:
         return f"No running process matches '{name}'."
     names = sorted({p.info["name"] for p in procs})
@@ -417,6 +419,9 @@ def list_reminders():
 
 @tool("Cancel reminders by id, or by text contained in the message.", {"match": S("Reminder id or part of its message")}, ["match"])
 def cancel_reminder(match):
+    match = match.strip()
+    if not match:  # an empty match is "in" every message, so it would cancel them all
+        return "Say which reminder to cancel (its id or some of its text). Nothing was cancelled."
     with _reminder_lock:
         items = _load_reminders()
         kept = [r for r in items if r["id"] != match and match.lower() not in r["message"].lower()]
@@ -496,6 +501,9 @@ def remember(fact):
 
 @tool("Forget remembered facts that contain the given text.", {"text": S("Text to match")}, ["text"])
 def forget(text):
+    text = text.strip()
+    if not text:  # an empty match is "in" every fact, so it would erase the whole memory
+        return "Say what to forget. Nothing was forgotten."
     facts = load_memory()
     kept = [f for f in facts if text.lower() not in f.lower()]
     _save_memory(kept)

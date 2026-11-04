@@ -200,13 +200,15 @@ def spotify_like_current():
 @tool("Add the song that's playing on Spotify to one of the user's playlists.",
       {"playlist": S("Name (or part of the name) of the user's playlist")}, ["playlist"])
 def spotify_add_to_playlist(playlist):
+    if not playlist.strip():  # an empty name would match whichever playlist comes first
+        return "Say which playlist to add it to."
     if not connected():
         return NOT_CONNECTED
     sp = _sp()
     p = sp.current_playback()
     if not p or not p.get("item"):
         return "Nothing is playing."
-    matches = [pl for pl in sp.current_user_playlists(limit=50)["items"] if pl and playlist.lower() in pl["name"].lower()]
+    matches =[pl for pl in sp.current_user_playlists(limit=50)["items"] if pl and playlist.lower() in pl["name"].lower()]
     if not matches:
         return f"You don't have a playlist matching '{playlist}'."
     sp.playlist_add_items(matches[0]["id"], [p["item"]["uri"]])
