@@ -25,6 +25,10 @@ THINKING_PHRASE = os.getenv("JARVIS_THINKING_PHRASE", "Thinking...")
 MODEL = os.getenv("JARVIS_MODEL", "claude-opus-5-5")
 # low = snappy replies, which suits a voice assistant. Raise to medium/high for harder tasks.
 EFFORT = os.getenv("JARVIS_EFFORT", "low")
+# Background jobs (sorting new emails) always use the cheapest model, whatever MODEL is set to.
+HELPER_MODEL = os.getenv("JARVIS_HELPER_MODEL") or "claude-haiku-5-5"
+# After this long without a command, Jarvis starts a fresh conversation instead of re-sending the old one.
+IDLE_RESET_MINUTES = int(os.getenv("JARVIS_IDLE_RESET_MINUTES") or 60)
 
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("JARVIS_WAKE_WORDS", "jarvis,jervis,javis,jarvas,travis").split(",")]
 # Say one of these (with or without "Jarvis") and he powers up like in the films: welcome home, weather, agenda.

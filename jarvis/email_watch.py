@@ -40,7 +40,7 @@ def _pick_important(emails):
     import anthropic
     listing = "\n\n".join(f"id: {e['id']}\nfrom: {e['from']}\nsubject: {e['subject']}\npreview: {e['snippet']}" for e in emails)
     response = anthropic.Anthropic().messages.create(
-        model=config.MODEL,
+        model=config.HELPER_MODEL,
         max_tokens=4000,
         output_config={"effort": "low", "format": {"type": "json_schema", "schema": IMPORTANCE_SCHEMA}},
         system=(f"You decide which new emails are worth interrupting {config.OWNER_NAME} about. Important: messages "

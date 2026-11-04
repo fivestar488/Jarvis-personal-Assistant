@@ -146,6 +146,8 @@ Starting playback on demand ("play my liked songs") needs **Spotify Premium**. O
 
 - `JARVIS_OWNER` / `JARVIS_USER_NAME`: who he works for, and what he calls you ("sir", "Jake"...).
 - `JARVIS_EFFORT`: `low` is fastest; `medium` or `high` gives smarter, slower answers.
+- `JARVIS_MODEL`: the brain. `claude-haiku-5-5` is cheapest, `claude-sonnet-5-5` sits in the middle, and `claude-opus-5-5` is the most capable.
+- **Saving API credit, built in:** background jobs (sorting new emails) always use the cheapest model (`JARVIS_HELPER_MODEL`). In long conversations, old screenshots, webcam photos and long tool output are dropped automatically, so they aren't paid for again on every message. After an hour without a command (`JARVIS_IDLE_RESET_MINUTES`), Jarvis starts a fresh conversation, while still remembering what you talked about.
 - `JARVIS_VOICE`, `JARVIS_VOICE_RATE`, `JARVIS_VOICE_PITCH`: his voice, speed and depth.
 - `JARVIS_LOCATION`: your town, for the weather. If blank, it's detected from your internet connection.
 - `JARVIS_NEWS_FEEDS`: your own news sources as `Name=RSS-url`, comma-separated. Leave blank for the built-in balanced mix.

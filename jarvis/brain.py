@@ -3,6 +3,7 @@ import datetime as dt
 import json
 import os
 import platform
+import time
 
 import anthropic
 
@@ -15,7 +16,17 @@ SERVER_TOOLS = [
     {"type": "web_search_20250305" if _HAIKU else "web_search_20260209", "name": "web_search"},
     {"type": "web_fetch_20250910" if _HAIKU else "web_fetch_20260209", "name": "web_fetch"},
 ]
-FALLBACKS = {} if _HAIKU else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+FALLBACKS = {} if _HAIKU else {"fallbacks": "default"}
+# Once a conversation gets long, the API clears old tool results (screenshots, webcam photos, long command
+# output) so they aren't paid for again on every turn, keeping the most recent few. It's done server-side,
+# so the history we send stays unchanged: the newest models refuse a history that was edited client-side.
+CONTEXT_EDITING = {"edits": [{
+    "type": "clear_tool_uses_20250919",
+    "trigger": {"type": "input_tokens", "value": 20000},
+    "keep": {"type": "tool_uses", "value": 4},
+    "clear_at_least": {"type": "input_tokens", "value": 5000},  # clearing resets the cache, so make it worth it
+}]}
+BETAS = ["context-management-2025-06-27"] + ([] if _HAIKU else ["server-side-fallback-2026-07-01"])
 MAX_STEPS = 25
 
 # Memory across restarts: a plain-text copy of recent exchanges, read back in when Jarvis starts.
@@ -113,6 +124,13 @@ class Brain:
         self.system = build_system_prompt(mode)  # fixed for the session so prompt caching keeps working
         self.messages = []
         self.on_status = on_status or (lambda text: None)
+        self.last_active = time.monotonic()
+
+    def fresh_start(self):
+        """Start a new conversation but keep continuity: the system prompt carries memories and the saved recent
+        exchanges. Used after a long idle, when the whole history would otherwise be re-sent at full price."""
+        self.system = build_system_prompt(self.mode)
+        self.messages = []
 
     def reset(self):
         """NEW SESSION: forget the conversation (including the saved copy). Long-term memories are kept."""
@@ -122,6 +140,11 @@ class Brain:
 
     def respond(self, text):
         """Like ask(), but turns API problems into something Jarvis can say."""
+        # Idle for a while: the prompt cache has long expired, so re-sending the old conversation would cost
+        # full price for every token of it. Start fresh instead (he still has the saved recent exchanges).
+        if self.messages and time.monotonic() - self.last_active > config.IDLE_RESET_MINUTES * 60:
+            self.fresh_start()
+        self.last_active = time.monotonic()
         checkpoint = len(self.messages)
         try:
             reply = self.ask(text) or "Done."
@@ -152,6 +175,8 @@ class Brain:
                 messages=self.messages,
                 output_config={"effort": config.EFFORT},
                 cache_control={"type": "ephemeral"},
+                context_management=CONTEXT_EDITING,
+                betas=BETAS,
                 **FALLBACKS,
             )
             self.messages.append({"role": "assistant", "content": response.content})
