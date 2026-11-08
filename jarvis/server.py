@@ -8,6 +8,7 @@ import base64
 import concurrent.futures
 import datetime as dt
 import secrets
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -17,8 +18,8 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (briefing, config, email_watch, feeds, google_tools, meetings, network, notify, security, spend,
-               telegram_bot, tools)
+from . import (briefing, config, email_watch, feeds, google_tools, meetings, memory_tidy, network, notify, security,
+               spend, suggestions, telegram_bot, tools, watchers)
 from .brain import Brain
 from .voice import synthesize, transcribe_pcm, warm_whisper
 
@@ -36,7 +37,11 @@ async def lifespan(_app):
     tools.start_reminders()
     email_watch.start()
     meetings.start()
-    telegram_bot.start(on_message=telegram_message, on_answer=answer_confirm)
+    watchers.start()
+    memory_tidy.start()
+    suggestions.deliver, suggestions.on_done = show_suggestion, suggestion_done
+    suggestions.start()
+    telegram_bot.start(on_message=telegram_message, on_answer=answer_confirm, on_suggestion=suggestions.answer)
     watcher = asyncio.create_task(watch_network())
     yield
     watcher.cancel()
@@ -204,6 +209,19 @@ def telegram_message(text):
     return from_thread(handle_message(text, origin="telegram")).result(timeout=600)
 
 
+def show_suggestion(s):
+    """A new proactive suggestion (from its background thread): a card on every screen with Approve / Dismiss,
+    the same in Telegram, and a phone notification that opens the HUD."""
+    from_thread(broadcast({"type": "suggestion", "id": s["id"], "text": s["text"]}))
+    telegram_bot.offer_suggestion(s)
+    threading.Thread(target=notify.push, args=("Suggestion", s["text"]), daemon=True).start()
+
+
+def suggestion_done(s):
+    from_thread(broadcast({"type": "suggestion_done", "id": s["id"], "status": s["status"]}))
+    telegram_bot.suggestion_done(s)
+
+
 def answer_confirm(cid, allowed):
     """An Allow / Deny answer from Telegram."""
     future = pending_confirms.get(cid)
@@ -346,6 +364,8 @@ async def websocket(ws: WebSocket, key: str = ""):
     while held_announcements:
         text = held_announcements.pop(0)
         await ws.send_json({"type": "announce", "text": text, "audio": await voice_for(text)})
+    for s in suggestions.pending():  # suggestions still waiting for an answer
+        await ws.send_json({"type": "suggestion", "id": s["id"], "text": s["text"]})
     global listen_on_connect
     if listen_on_connect:
         listen_on_connect = False
@@ -359,6 +379,10 @@ async def websocket(ws: WebSocket, key: str = ""):
                 future = pending_confirms.get(event.get("id"))
                 if future and not future.done():
                     future.set_result(bool(event.get("answer")))
+            elif event.get("type") == "suggestion_reply":
+                result = await asyncio.to_thread(suggestions.answer, str(event.get("id")), bool(event.get("accept")))
+                if result:
+                    await ws.send_json({"type": "status", "text": result})
     except WebSocketDisconnect:
         pass
     finally:

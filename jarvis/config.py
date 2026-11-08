@@ -32,6 +32,10 @@ HELPER_MODEL = os.getenv("JARVIS_HELPER_MODEL") or "claude-haiku-5-5"
 DAILY_BUDGET = float(os.getenv("JARVIS_DAILY_BUDGET") or 1.00)
 # Minutes before each calendar event that Jarvis briefs you on it (0 = off).
 MEETING_BRIEF_MINUTES = int(os.getenv("JARVIS_MEETING_BRIEF_MINUTES") or 10)
+# Proactive suggestions (offered reminders you approve or dismiss): at most this many a day. 0 = off.
+SUGGESTIONS_PER_DAY = int(os.getenv("JARVIS_SUGGESTIONS_PER_DAY") or 3)
+# Nightly memory tidy-up (merges duplicate memories, replaces outdated ones). on/off
+MEMORY_TIDY = os.getenv("JARVIS_MEMORY_TIDY", "on").lower() not in ("off", "false", "0", "no")
 # Your private Telegram bot's token from @BotFather (blank = Telegram off). See "Telegram" in the README.
 TELEGRAM_TOKEN = os.getenv("JARVIS_TELEGRAM_TOKEN", "").strip()
 # After this long without a command, Jarvis starts a fresh conversation instead of re-sending the old one.

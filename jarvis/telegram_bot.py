@@ -21,6 +21,8 @@ pairing_code = None
 _tries = 0
 _on_message = None   # fn(text) -> reply, set by the server
 _on_answer = None    # fn(confirm_id, allowed), set by the server
+_on_suggestion = None  # fn(suggestion_id, accept) -> result text, set by the server
+_suggestion_messages = {}  # suggestion id -> Telegram message id
 _confirm_messages = {}  # confirm id -> Telegram message id, so the buttons can be removed once it's answered
 _thread = None
 
@@ -93,6 +95,31 @@ def confirm_done(confirm_id):
             pass
 
 
+def offer_suggestion(s):
+    """A proactive suggestion with Approve / Dismiss buttons."""
+    chat_id = owner()
+    if not (enabled() and chat_id):
+        return
+    try:
+        r = _call("sendMessage", chat_id=chat_id, text=f"💡 {s['text']}",
+                  reply_markup={"inline_keyboard": [[{"text": "✅ Approve", "callback_data": f"sa:{s['id']}"},
+                                                     {"text": "✖ Dismiss", "callback_data": f"sd:{s['id']}"}]]})
+        _suggestion_messages[s["id"]] = r["result"]["message_id"]
+    except Exception:
+        pass
+
+
+def suggestion_done(s):
+    """Answered (here or on the HUD) or expired: replace the buttons with what happened."""
+    message_id = _suggestion_messages.pop(s["id"], None)
+    if message_id and owner():
+        try:
+            _call("editMessageText", chat_id=owner(), message_id=message_id,
+                  text=f"💡 {s['text']}\n— {s['status']}", reply_markup={"inline_keyboard": []})
+        except Exception:
+            pass
+
+
 HELP = ("I'm J.A.R.V.I.S. Send me anything you'd say to me on the PC, for example \"what's on my calendar today?\", "
         "\"any important emails?\" or \"remind me at 6pm to call mum\". Alerts and approval requests come here too.")
 
@@ -100,12 +127,18 @@ HELP = ("I'm J.A.R.V.I.S. Send me anything you'd say to me on the PC, for exampl
 def _handle(update):
     global _tries, pairing_code
     me = owner()
-    if "callback_query" in update:  # an Allow / Deny button
+    if "callback_query" in update:  # a button: Allow / Deny an approval, or Approve / Dismiss a suggestion
         q = update["callback_query"]
-        if me and q["from"]["id"] == me and q.get("data", "")[:3] in ("ok:", "no:"):
-            allowed = q["data"].startswith("ok:")
-            _on_answer and _on_answer(q["data"][3:], allowed)
+        if not (me and q["from"]["id"] == me):
+            return
+        kind, target = q.get("data", "")[:3], q.get("data", "")[3:]
+        if kind in ("ok:", "no:"):
+            allowed = kind == "ok:"
+            _on_answer and _on_answer(target, allowed)
             _call("answerCallbackQuery", callback_query_id=q["id"], text="Allowed" if allowed else "Denied")
+        elif kind in ("sa:", "sd:"):
+            result = _on_suggestion(target, kind == "sa:") if _on_suggestion else None
+            _call("answerCallbackQuery", callback_query_id=q["id"], text=(result or "Already answered")[:190])
         return
     m = update.get("message") or {}
     chat, user, text = m.get("chat", {}), m.get("from", {}), (m.get("text") or "").strip()
@@ -161,13 +194,13 @@ def _poll():
             time.sleep(10)  # no internet: try again
 
 
-def start(on_message, on_answer):
+def start(on_message, on_answer, on_suggestion=None):
     """Start listening for your messages. on_message(text) -> reply runs a command, on_answer(id, allowed) answers
-    an approval request."""
-    global _thread, _on_message, _on_answer, pairing_code
+    an approval request, on_suggestion(id, accept) -> result answers a suggestion."""
+    global _thread, _on_message, _on_answer, _on_suggestion, pairing_code
     if _thread or not enabled():
         return
-    _on_message, _on_answer = on_message, on_answer
+    _on_message, _on_answer, _on_suggestion = on_message, on_answer, on_suggestion
     if not owner():
         pairing_code = f"{secrets.randbelow(1_000_000):06d}"
         print(f"\n  Telegram: send  /pair {pairing_code}  to your bot to connect it to Jarvis.")

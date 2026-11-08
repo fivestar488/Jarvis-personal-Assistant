@@ -94,6 +94,23 @@ function addMsg(kind, text) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+function showSuggestion(id, text) {
+  if (document.querySelector(`.msg.suggest[data-id="${id}"]`)) return;  // already shown (reconnect)
+  const el = document.createElement("div");
+  el.className = "msg suggest";
+  el.dataset.id = id;
+  el.innerHTML = `<div class="who"><span>SUGGESTION</span><time>${now()}</time></div><div>${esc(text)}</div>
+    <div class="suggest-actions"><button data-accept="1">APPROVE</button><button data-accept="0">DISMISS</button></div>`;
+  el.querySelectorAll("button").forEach((b) => (b.onclick = () => {
+    send({ type: "suggestion_reply", id, accept: b.dataset.accept === "1" });
+    el.querySelectorAll("button").forEach((x) => (x.disabled = true));
+  }));
+  logEl.appendChild(el);
+  logEl.scrollTop = logEl.scrollHeight;
+  blip(780, 0.08);
+  if (activeTab !== "comms") document.querySelector('.tabs [data-tab="comms"]').classList.add("ping");
+}
+
 function addActivity(text, sys = false) {
   const li = document.createElement("li");
   if (sys) li.className = "sys";
@@ -407,6 +424,17 @@ function handle(ev) {
       else if (ev.online) phoneBtn.classList.add("ping");
       addActivity(ev.online ? `Network changed to ${ev.network}. New phone code ready.` : "Network lost.", true);
       break;
+    case "suggestion":  // a proactive suggestion: Approve sets the reminder it offers
+      showSuggestion(ev.id, ev.text);
+      break;
+    case "suggestion_done": {
+      const card = document.querySelector(`.msg.suggest[data-id="${ev.id}"]`);
+      if (card) {
+        card.querySelector(".suggest-actions").textContent = { approved: "✓ Reminder set", dismissed: "Dismissed", expired: "Expired" }[ev.status] || ev.status;
+        card.classList.add("answered");
+      }
+      break;
+    }
     case "activate":  // "Wake up, daddy's home"
       boot(false);
       blip(440, 0.12); setTimeout(() => blip(660, 0.12), 140); setTimeout(() => blip(990, 0.18), 280);
