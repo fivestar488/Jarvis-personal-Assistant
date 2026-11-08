@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/banner.jpg" alt="J.A.R.V.I.S.: Just A Rather Very Intelligent System. An Iron Man-style AI assistant for Windows, powered by Claude" width="100%"></p>
+
 # J.A.R.V.I.S.
 
 An Iron Man-style AI assistant for Windows, powered by Claude. You talk to it, give it commands, and it does the work on your PC: it opens apps, reads your screen, runs your Gmail and Calendar, plays Spotify, watches prices and pages, and reaches your phone through an installable app and Telegram.
