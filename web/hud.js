@@ -922,9 +922,10 @@ async function loadWeather() {
 function initRadar(lat, lon) {
   if (!window.L) return;  // map library didn't load (no internet)
   radarMap = L.map("radar", { zoomControl: false, scrollWheelZoom: false, attributionControl: true }).setView([lat, lon], 6);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    subdomains: "abcd", maxZoom: 10, className: "basemap",
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CARTO',
+  // Esri's dark grey basemap: free, no API key (CARTO's dark tiles now need one and show "API KEY REQUIRED").
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 10, className: "basemap",
+    attribution: 'Tiles &copy; <a href="https://www.esri.com">Esri</a>',
   }).addTo(radarMap);
   L.circleMarker([lat, lon], { radius: 4, color: "#ff9a1f", weight: 2, fillColor: "#ff9a1f", fillOpacity: 1 }).addTo(radarMap);
   loadRadar();

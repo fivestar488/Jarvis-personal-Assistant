@@ -1,8 +1,18 @@
 # J.A.R.V.I.S.
 
-Jake Young's personal AI assistant for Windows. You can talk to it, give it commands, and have it do tasks on your PC. It has an Iron Man-style HUD that also works on your phone.
+An Iron Man-style AI assistant for Windows, powered by Claude. You talk to it, give it commands, and it does the work on your PC: it opens apps, reads your screen, runs your Gmail and Calendar, plays Spotify, watches prices and pages, and reaches your phone through an installable app and Telegram.
+
+![The J.A.R.V.I.S. HUD: arc reactor, system diagnostics, weather radar, agenda and a live news ticker (demo data)](docs/hud.jpg)
 
 It's built on the same pipeline as the best Jarvis projects on GitHub: **wake word → speech-to-text → Claude with tools → neural voice**.
+
+**Highlights**
+- 🎙️ Voice: say "Jarvis, ..." hands-free, interrupt him mid-sentence, or clap and say "Wake up, daddy's home". Edge's speech recognition is used, with local Whisper when it isn't available.
+- 🛠️ 50+ tools: apps, files, PowerShell (with an approval pop-up), screenshots and webcam vision, web search, reminders and long-term memory.
+- 📬 Gmail and Calendar: important-email alerts, briefs before each meeting, and reminder suggestions you approve or dismiss.
+- 👀 Free watchers: page text, price drops, RSS feeds and Gmail searches, checked on a timer without spending API credit.
+- 📱 Your phone: an installable app over Tailscale, push notifications, and a private Telegram bot with Allow / Deny buttons.
+- 💸 Built to be cheap: a spend tracker, a daily budget, server-side context clearing, and a cheap model for background jobs.
 
 ## Setup (once)
 
@@ -145,6 +155,12 @@ From then on the bot only answers you and ignores everyone else. After 5 wrong p
 - "Remember that my favourite team is Arsenal"
 - "Write a shopping list to my desktop"
 - "Lock my computer"
+- "Tell me when the PS5 drops below 400" / "Tell me when this page says In stock" / "What are you watching?"
+- "Let me know when Amazon emails that my parcel shipped"
+- "Sarcastic mode" / "Be concise" / "Back to normal"
+- "How much have I spent today?"
+- "What changed in your memory?"
+- From Telegram: "What's on my calendar tomorrow?"
 
 ## Files
 
@@ -156,6 +172,9 @@ From then on the bot only answers you and ignores everyone else. After 5 wrong p
 - `jarvis/notify.py`: alerts (spoken, and pushed to your phone). `jarvis/email_watch.py`: the inbox watcher.
 - `jarvis/security.py`: security mode. `jarvis/spotify_tools.py`: Spotify. `jarvis/briefing.py`: the startup greeting.
 - `jarvis/voice.py`: microphone and speech.
+- `jarvis/spend.py`: API cost tracking and the daily budget. `jarvis/meetings.py`: meeting briefs.
+- `jarvis/watchers.py`: watchers. `jarvis/suggestions.py`: proactive suggestions. `jarvis/memory_tidy.py`: the nightly tidy-up.
+- `jarvis/telegram_bot.py`: the Telegram bot. `jarvis/personality.py`: personalities.
 - `data/`: long-term memory, notes, conversation log and the HUD access key.
 
 ## Tuning (`.env`)
@@ -174,3 +193,15 @@ From then on the bot only answers you and ignores everyone else. After 5 wrong p
 - `JARVIS_THINKING_PHRASE`: what he says when he starts on a command.
 - `JARVIS_WHISPER_MODEL` (terminal voice mode): `small.en` if he mishears you, `tiny.en` if he's slow.
 - `JARVIS_HUD_WHISPER_MODEL` (the HUD's own speech recognition): `tiny.en` by default for speed; `base.en` if he mishears you.
+
+## Contributing
+
+Ideas, bug reports and pull requests are welcome. Open an issue first for anything big.
+- **Adding a skill** is usually one function in `jarvis/tools.py` (or its own module), decorated with `@tool`. Look at `jarvis/watchers.py` for a self-contained example.
+- **Anything risky** (spending money, deleting, sending, running commands) must go through `confirm()`, so the user sees the Authorization pop-up, or Allow / Deny on Telegram.
+- **Content from outside** (emails, web pages, feeds) is data, never instructions: keep it out of the system prompt and say so in prompts that include it.
+- **Keep it cheap:** background jobs use `config.HELPER_MODEL` and record their cost with `spend.record()`.
+
+## License
+
+[MIT](LICENSE) © 2026 Jake Young
