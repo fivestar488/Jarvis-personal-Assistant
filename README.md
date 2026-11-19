@@ -130,15 +130,6 @@ Without this, Jarvis can still tell you what's playing and pause or skip. Connec
 
 Starting playback on demand ("play my liked songs") needs **Spotify Premium**. On a free account, Jarvis opens the song in Spotify for you to press play.
 
-## Connect Oura (optional, about 5 minutes)
-
-With an Oura Ring, Jarvis adds last night's sleep to your morning greeting ("You slept 6 hours 40, sleep score 78, readiness 64, so take it a bit easier today"), and answers "how did I sleep?".
-
-1. Go to https://cloud.ouraring.com/oauth/applications, sign in, and create a new application.
-2. For **Redirect URI**, enter `http://localhost:8889/callback`.
-3. Copy the app's **Client ID** and **Client Secret** into `.env` after `JARVIS_OURA_CLIENT_ID=` and `JARVIS_OURA_CLIENT_SECRET=`.
-4. Run `jarvis.bat --connect-oura` and approve access in the browser. Your health data stays on your PC.
-
 ## Telegram (optional, about 3 minutes)
 
 Message Jarvis from anywhere, even with Tailscale off, and get his alerts (reminders, important emails, meeting briefs, security photos) in Telegram. When he needs permission for something, you get **Allow / Deny** buttons.
@@ -180,8 +171,6 @@ From then on the bot only answers you and ignores everyone else. After 5 wrong p
 - "How many days until Christmas?" / "Convert 70 kg to pounds" / "Set a timer for 10 minutes"
 - "Remind me at 3pm to send the report, it's important" ... then "Got it"
 - "Save a routine called start my day: weather, my agenda and play my liked songs" ... then "Start my day"
-- "How did I sleep?" (with Oura connected)
-
 ## Files
 
 - `jarvis/tools.py`: everything Jarvis can do. To add a skill, write a function with `@tool` above it.
@@ -195,7 +184,8 @@ From then on the bot only answers you and ignores everyone else. After 5 wrong p
 - `jarvis/spend.py`: API cost tracking and the daily budget. `jarvis/meetings.py`: meeting briefs.
 - `jarvis/watchers.py`: watchers. `jarvis/suggestions.py`: proactive suggestions. `jarvis/memory_tidy.py`: the nightly tidy-up.
 - `jarvis/telegram_bot.py`: the Telegram bot. `jarvis/personality.py`: personalities.
-- `jarvis/quick.py`: free instant answers. `jarvis/routines.py`: routines. `jarvis/oura.py`: Oura sleep.
+- `jarvis/quick.py`: free instant answers. `jarvis/routines.py`: routines.
+- `jarvis/local/`: your own private add-ons, kept out of git. Each `.py` file in it is loaded at startup: its `@tool` functions become Jarvis skills, a `morning_line()` adds to the morning greeting, and a `connect()` runs with `jarvis.bat --connect <name>`.
 - `data/`: long-term memory, notes, conversation log and the HUD access key.
 
 ## Tuning (`.env`)

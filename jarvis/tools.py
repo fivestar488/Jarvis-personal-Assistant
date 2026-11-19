@@ -595,5 +595,23 @@ def read_notes():
     return config.NOTES_FILE.read_text(encoding="utf-8") if config.NOTES_FILE.exists() else "No notes yet."
 
 
-from . import (google_tools, memory_tidy, oura, personality, routines, security, spend,  # noqa: E402,F401
+from . import (google_tools, memory_tidy, personality, routines, security, spend,  # noqa: E402,F401
                spotify_tools, watchers)  # (importing them registers their tools)
+
+
+def _load_local_extensions():
+    """Private add-ons in jarvis/local/ (that folder is kept out of git). Importing one registers its @tool
+    functions. It may also offer morning_line() for the morning greeting, and connect() for
+    'jarvis.bat --connect <name>'. If the folder doesn't exist, there's simply nothing to load."""
+    import importlib
+    import pkgutil
+    found = []
+    for module in pkgutil.iter_modules([str(Path(__file__).parent / "local")]):
+        try:
+            found.append(importlib.import_module(f"jarvis.local.{module.name}"))
+        except Exception as e:  # a broken add-on mustn't stop Jarvis
+            print(f"  Couldn't load the add-on jarvis/local/{module.name}.py: {e}")
+    return found
+
+
+LOCAL_EXTENSIONS = _load_local_extensions()

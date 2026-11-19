@@ -2,5 +2,7 @@
 data/
 __pycache__/
 voice_samples/
+# Private add-ons (see "jarvis/local/" in the README)
+jarvis/local/
 # Jake's own Claude Code setup (email digest + feature scout agents): personal, not part of Jarvis
 .claude/

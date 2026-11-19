@@ -255,7 +255,7 @@ def main():
     parser.add_argument("--no-browser", action="store_true", help="don't open the HUD automatically")
     parser.add_argument("--connect-google", action="store_true", help="sign in to Gmail & Google Calendar")
     parser.add_argument("--connect-spotify", action="store_true", help="sign in to Spotify")
-    parser.add_argument("--connect-oura", action="store_true", help="sign in to your Oura Ring account")
+    parser.add_argument("--connect", metavar="ADDON", help="sign in to a private add-on in jarvis/local/")
     args = parser.parse_args()
 
     console.print(BANNER)
@@ -274,11 +274,14 @@ def main():
         spotify_tools.connect()
         console.print("[bold green]Spotify connected.[/]")
         return
-    if args.connect_oura:
-        from jarvis import oura
-        console.print("[cyan]Opening Oura sign-in in your browser...[/]")
-        oura.connect()
-        console.print("[bold green]Oura connected.[/] " + (oura.sleep_report() or ""))
+    if args.connect:
+        addon = next((m for m in tools.LOCAL_EXTENSIONS if m.__name__.rsplit(".", 1)[-1] == args.connect.lower()), None)
+        if not addon or not hasattr(addon, "connect"):
+            console.print(f"[bold red]No add-on called '{args.connect}' with a sign-in in jarvis/local/.[/]")
+            sys.exit(1)
+        console.print(f"[cyan]Opening the {args.connect} sign-in in your browser...[/]")
+        addon.connect()
+        console.print(f"[bold green]{args.connect} connected.[/]")
         return
     if not os.getenv("ANTHROPIC_API_KEY"):
         console.print("[bold red]No ANTHROPIC_API_KEY found.[/] Open the .env file and paste your key in "

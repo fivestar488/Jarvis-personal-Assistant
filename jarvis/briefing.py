@@ -45,14 +45,15 @@ def greeting(opening=None):
     except Exception:
         pass  # no internet: skip the weather rather than fail the greeting
 
-    if now.hour < 12:  # mornings: last night's sleep from the Oura Ring, if connected
-        try:
-            from . import oura
-            night = oura.last_night() if oura.connected() else None
-            if night and oura.describe(night):
-                lines.append(oura.describe(night))
-        except Exception:
-            pass  # Oura offline or not synced: skip it rather than fail the greeting
+    if now.hour < 12:  # mornings: anything private add-ons (jarvis/local/) want to say
+        from . import tools
+        for ext in tools.LOCAL_EXTENSIONS:
+            try:
+                line = ext.morning_line() if hasattr(ext, "morning_line") else ""
+                if line:
+                    lines.append(line)
+            except Exception:
+                pass  # an add-on offline or failing: skip it rather than fail the greeting
 
     if google_tools.connected():
         try:

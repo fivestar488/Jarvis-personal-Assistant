@@ -36,9 +36,6 @@ MEETING_BRIEF_MINUTES = int(os.getenv("JARVIS_MEETING_BRIEF_MINUTES") or 10)
 SUGGESTIONS_PER_DAY = int(os.getenv("JARVIS_SUGGESTIONS_PER_DAY") or 3)
 # Nightly memory tidy-up (merges duplicate memories, replaces outdated ones). on/off
 MEMORY_TIDY = os.getenv("JARVIS_MEMORY_TIDY", "on").lower() not in ("off", "false", "0", "no")
-# Oura Ring (optional): your Oura app's client ID and secret. See "Connect Oura" in the README.
-OURA_CLIENT_ID = os.getenv("JARVIS_OURA_CLIENT_ID", "").strip()
-OURA_CLIENT_SECRET = os.getenv("JARVIS_OURA_CLIENT_SECRET", "").strip()
 # Your private Telegram bot's token from @BotFather (blank = Telegram off). See "Telegram" in the README.
 TELEGRAM_TOKEN = os.getenv("JARVIS_TELEGRAM_TOKEN", "").strip()
 # After this long without a command, Jarvis starts a fresh conversation instead of re-sending the old one.
