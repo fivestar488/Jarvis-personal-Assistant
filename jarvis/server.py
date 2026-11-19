@@ -195,7 +195,7 @@ async def handle_message(text, origin):
             reply = "Fresh start. What can I do for you?"
         elif briefing.is_activation(text):
             # "Wake up, daddy's home": the HUD replays its power-up sequence while he answers, no "Thinking...".
-            await broadcast({"type": "activate"})
+            await broadcast({"type": "activate", "origin": origin})
             reply = await asyncio.to_thread(briefing.welcome_home)
         else:
             await broadcast({"type": "state", "state": "thinking", "origin": origin, "audio": await thinking_audio()})
@@ -360,6 +360,16 @@ async def transcribe(key: str, request: Request):
     return {"text": text}
 
 
+@app.get("/api/activation-song")
+async def activation_song(key: str):
+    """The music file for the power-up, played in the background by the HUD."""
+    check_key(key)
+    song = config.activation_song_file()
+    if not song:
+        raise HTTPException(404)
+    return FileResponse(song, media_type=config.SONG_TYPES[song.suffix.lower()])
+
+
 @app.get("/api/phone")
 async def phone(key: str):
     """The current phone link as a QR code."""
@@ -393,7 +403,8 @@ async def websocket(ws: WebSocket, key: str = ""):
     client_id = uuid.uuid4().hex
     clients[client_id] = ws
     await ws.send_json({"type": "hello", "id": client_id, "user": config.USER_NAME, "wake_words": config.WAKE_WORDS,
-                        "hotkey": config.HOTKEY, "activation": config.ACTIVATION_PHRASES, "clap_to_wake": config.CLAP_TO_WAKE})
+                        "hotkey": config.HOTKEY, "activation": config.ACTIVATION_PHRASES, "clap_to_wake": config.CLAP_TO_WAKE,
+                        "activation_song": bool(config.activation_song_file())})
     asyncio.create_task(send_greeting(ws))
     while held_announcements:
         text = held_announcements.pop(0)

@@ -40,6 +40,32 @@ function setState(s) {
   state = s;
   document.body.dataset.state = s;
   stateLabel.textContent = LABELS[s];
+  duckSong();
+}
+
+// ---------- the activation song (a clap, or a clap + "Wake up, daddy's home") ----------
+// The music file on the PC (data/activation-song.mp3) plays in the background, with nothing on screen. It's
+// quieter while Jarvis is speaking or listening, so you can hear each other, and stops at the end of the song or
+// when you say "stop the music".
+let hasActivationSong = false, song = null;
+
+const songPlaying = () => !!song && !song.paused;
+
+function playActivationSong() {
+  if (!hasActivationSong || songPlaying()) return;  // already playing: let it carry on
+  initAudio();
+  song = song || new Audio(`/api/activation-song?key=${encodeURIComponent(KEY)}`);
+  song.currentTime = 0;
+  duckSong();
+  song.play().catch(() => addActivity("Couldn't play the activation song.", true));
+}
+
+function stopSong() {
+  if (song) song.pause();
+}
+
+function duckSong() {
+  if (song) song.volume = state === "speaking" || state === "listening" ? 0.12 : 0.45;
 }
 
 // ---------- boot sequence (also replayed by "Wake up, daddy's home") ----------
@@ -324,6 +350,11 @@ function send(obj) {
 function submit(text, spoken = false) {
   text = text.trim();
   if (!text) return;
+  if (songPlaying() && ["stop the music", "stop music", "music off", "turn off the music", "stop the song",
+                             "turn the music off"].includes(bareWords(text))) {
+    stopSong(); input.value = ""; cancelCapture(); setState("idle");
+    return;
+  }
   // "Continue" after interrupting him: finish what he was saying, right here (no need to ask the PC again).
   if (resumable.length && ["continue", "go on", "carry on", "keep going", "continue please"].includes(bareWords(text))) {
     input.value = "";
@@ -363,7 +394,10 @@ let clapToWake = true, clapWait = null, clapEar = null, lastClap = 0;
 
 function heardClap() {
   lastClap = Date.now();
-  if (!clapWait) return;
+  if (!clapWait) {
+    playActivationSong();  // a clap on its own starts the music; "Wake up, daddy's home" within 5 s powers him up too
+    return;
+  }
   const text = clapWait.text;
   cancelClapWait();
   lastClap = 0;
@@ -433,6 +467,7 @@ function handle(ev) {
     case "hello":
       myId = ev.id; wakeWords = ev.wake_words || wakeWords; userName = ev.user || userName;
       activation = (ev.activation || []).map(bareWords);
+      hasActivationSong = !!ev.activation_song;
       clapToWake = ev.clap_to_wake !== false;
       if (ev.hotkey && canListen) micBtn.title = `Push to talk (or press ${ev.hotkey.toUpperCase()} in any app)`;
       addActivity("Secure uplink established.", true);
@@ -493,6 +528,8 @@ function handle(ev) {
     }
     case "activate":  // "Wake up, daddy's home"
       boot(false);
+      // On the screen you said it to (or the PC's, if it came from Telegram), not on every device at once.
+      if (ev.origin === myId || (ev.origin === "telegram" && !document.hidden)) playActivationSong();
       blip(440, 0.12); setTimeout(() => blip(660, 0.12), 140); setTimeout(() => blip(990, 0.18), 280);
       break;
     case "listen":  // global hotkey pressed: same as tapping the mic

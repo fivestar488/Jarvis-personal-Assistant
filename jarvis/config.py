@@ -51,6 +51,21 @@ ACTIVATION_PHRASES = [p.strip() for p in (
     os.getenv("JARVIS_ACTIVATION_PHRASES")
     or "wake up daddy's home,wake up daddy is home,wake up daddies home,daddy's home,daddy is home,wake up,i'm home,honey i'm home"
 ).split(",") if p.strip()]
+# Music for the power-up (a clap, or a clap plus "Wake up, daddy's home"), played in the background in the HUD.
+# Put an audio file you own at data/activation-song.mp3 (or .m4a/.wav/.ogg), or give a file path here; "off" = none.
+ACTIVATION_SONG = os.getenv("JARVIS_ACTIVATION_SONG", "").strip()
+SONG_TYPES = {".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg"}
+
+
+def activation_song_file():
+    """The activation song's file on this PC, or None."""
+    if ACTIVATION_SONG.lower() in ("off", "none", "no"):
+        return None
+    candidates = [Path(os.path.expandvars(os.path.expanduser(ACTIVATION_SONG)))] if ACTIVATION_SONG else \
+        [DATA_DIR / f"activation-song{ext}" for ext in SONG_TYPES]
+    return next((p for p in candidates if p.is_file() and p.suffix.lower() in SONG_TYPES), None)
+
+
 # In the HUD, a spoken power-up phrase only counts once you clap (so the TV can't wake him). Typed ones don't need it.
 CLAP_TO_WAKE = os.getenv("JARVIS_CLAP_TO_WAKE", "on").lower() not in ("off", "false", "0", "no")
 VOICE = os.getenv("JARVIS_VOICE", "en-GB-RyanNeural")
