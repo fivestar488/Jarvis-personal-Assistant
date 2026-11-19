@@ -17,6 +17,31 @@ def speakable(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
+class SentenceSplitter:
+    """Collects streamed reply text and hands back each complete sentence, so the first one can be spoken while
+    the rest is still being written. Very short pieces wait for more ("Okay." on its own sounds clipped)."""
+    END = re.compile(r"(?<=[.!?…])[\"')\]]?\s+|\n\s*\n")
+    MIN_CHARS = 20
+
+    def __init__(self, emit):
+        self.emit, self.buf = emit, ""
+
+    def feed(self, text):
+        self.buf += text
+        while True:
+            m = next((m for m in self.END.finditer(self.buf) if m.start() >= self.MIN_CHARS), None)
+            if not m:
+                return
+            sentence, self.buf = self.buf[:m.end()].strip(), self.buf[m.end():]
+            if speakable(sentence):
+                self.emit(sentence)
+
+    def flush(self):
+        rest, self.buf = self.buf.strip(), ""
+        if speakable(rest):
+            self.emit(rest)
+
+
 async def synthesize(text):
     """Text -> MP3 bytes in Jarvis's voice."""
     import edge_tts

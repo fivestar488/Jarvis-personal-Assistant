@@ -7,7 +7,7 @@ import time
 
 import anthropic
 
-from . import config, personality, spend, tools
+from . import config, personality, quick, spend, tools
 
 
 def model_options(model):
@@ -148,8 +148,16 @@ class Brain:
         self.system = build_system_prompt(self.mode)  # picks up anything remembered this session
         self.messages = []
 
-    def respond(self, text):
-        """Like ask(), but turns API problems into something Jarvis can say."""
+    def respond(self, text, on_text=None):
+        """Like ask(), but turns API problems into something Jarvis can say. Simple requests (the time, sums,
+        timers, routines...) are answered for free without calling Claude. on_text: see ask()."""
+        try:
+            quick_reply = quick.answer(text)
+        except Exception:
+            quick_reply = None
+        if quick_reply:
+            save_exchange(text, quick_reply)
+            return quick_reply
         # Idle for a while: the prompt cache has long expired, so re-sending the old conversation would cost
         # full price for every token of it. Start fresh instead (he still has the saved recent exchanges).
         if self.messages and time.monotonic() - self.last_active > config.IDLE_RESET_MINUTES * 60:
@@ -157,7 +165,7 @@ class Brain:
         self.last_active = time.monotonic()
         checkpoint = len(self.messages)
         try:
-            reply = self.ask(text) or "Done."
+            reply = self.ask(text, on_text) or "Done."
             save_exchange(text, reply)
             return reply
         except anthropic.APIError as e:
@@ -173,13 +181,15 @@ class Brain:
                         "Billing, and I'll be right back.")
             return f"Something went wrong on the API side: {e.message}"
 
-    def ask(self, text):
-        """Send one user request; returns Jarvis's final spoken/printed reply."""
+    def ask(self, text, on_text=None):
+        """Send one user request; returns Jarvis's final spoken/printed reply.
+        on_text(piece): if given, the reply is streamed and each piece of text is passed on as it's written (so the
+        HUD can start speaking the first sentence early); on_text(None) marks the end of each step."""
         self.messages.append({"role": "user", "content": text})
         model = spend.current_model()  # the cheapest model once today's budget is used up
         web_tools, betas, fallbacks = model_options(model)
         for _ in range(MAX_STEPS):
-            response = self.client.beta.messages.create(
+            request = dict(
                 model=model,
                 max_tokens=16000,
                 system=self.system,
@@ -191,6 +201,15 @@ class Brain:
                 betas=betas,
                 **fallbacks,
             )
+            if on_text:
+                with self.client.beta.messages.stream(**request) as stream:
+                    for event in stream:
+                        if event.type == "text":
+                            on_text(event.text)
+                    response = stream.get_final_message()
+                on_text(None)
+            else:
+                response = self.client.beta.messages.create(**request)
             spend.record(response.model or model, response.usage, "chat")
             self.messages.append({"role": "assistant", "content": response.content})
 

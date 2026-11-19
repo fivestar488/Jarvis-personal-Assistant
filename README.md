@@ -45,6 +45,10 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 - **"Wake up, daddy's home" + a clap**: clap and say it, in either order, within 5 seconds of each other. The HUD replays its power-up sequence and Jarvis answers "Welcome back, sir", then gives the weather and your agenda. "I'm home" and "Wake up, Jarvis" work too. He only powers up when he hears both, so the TV can't wake him. A clap before the phrase only counts if Jarvis is already listening (hands-free on, or after tapping 🎤). In hands-free mode you don't need to say "Jarvis" first. Typing the phrase doesn't need a clap. You can set your own phrases with `JARVIS_ACTIVATION_PHRASES` in `.env`, or turn the clap off with `JARVIS_CLAP_TO_WAKE=off`.
 - **Meeting briefs:** 10 minutes before each calendar event, Jarvis tells you on the PC and your phone what it is, who's coming, where it is, and anything in its notes. With credit available, he also mentions a related email if one is clearly about it. Change the timing with `JARVIS_MEETING_BRIEF_MINUTES` (`0` = off).
 - **Personalities:** "Jarvis, be concise", "sarcastic mode", "be more formal", "talk like a pirate", "back to normal". He remembers your choice after a restart.
+- **Faster replies:** Jarvis starts speaking his first sentence while the rest of the answer is still being written. If you interrupt him, say **"continue"** and he picks up from the sentence he was on.
+- **Free instant answers:** the time and date, "how many days until Christmas", percentages and sums ("what's 15% of 80"), unit conversions ("10 km to miles", "100 f to c"), timers ("set a timer for 5 minutes") and volume are answered instantly on the PC, with no API cost. Anything else goes to Claude as usual.
+- **Important reminders:** "remind me at 3 to send the report, it's important". He warns you 1 hour and 15 minutes before. When it's due, he repeats every 5 minutes (PC, phone and Telegram) until you say **"got it"** or tap **GOT IT**. That's at most 6 repeats, and none between 11 PM and 7 AM.
+- **Routines:** "save a routine called focus mode: close Chrome, open Spotify, volume down". Then just say "focus mode". Running a saved routine is free (no API call), and risky steps still ask for permission. "What routines do I have?" and "delete the focus mode routine" also work.
 - **Watchers:** "tell me when the PS5 price drops below 400", "tell me when this page says In stock", "let me know when Amazon emails that it shipped", "tell me about new BBC stories on Gaza". Jarvis checks on a timer (web pages, prices, news feeds, Gmail searches) **without using API credit**, and alerts you on the PC, phone and Telegram only when something changes. "What are you watching?" lists them, and "stop watching the PS5" removes one. Some shops block automated checks; Jarvis tells you when he can't read a page.
 - **Nightly memory tidy-up:** once a day (from 3 AM, or the first time Jarvis is on after that) he merges duplicate memories and replaces outdated ones with the newer fact. He backs up first, to `data/memory_backups`, and refuses any tidy that would remove more than half. Ask "what changed in your memory?". Turn it off with `JARVIS_MEMORY_TIDY=off`.
 - **Proactive suggestions:** a few times a day, between 8 AM and 9 PM, Jarvis looks at your calendar, recent emails and reminders. If something deserves a reminder, he offers it as a card with **Approve / Dismiss** on the HUD and in Telegram. Approving sets the reminder, which is the only thing a suggestion can do. Dismissed ideas aren't suggested again. At most `JARVIS_SUGGESTIONS_PER_DAY` (default 3, `0` = off).
@@ -125,6 +129,15 @@ Without this, Jarvis can still tell you what's playing and pause or skip. Connec
 
 Starting playback on demand ("play my liked songs") needs **Spotify Premium**. On a free account, Jarvis opens the song in Spotify for you to press play.
 
+## Connect Oura (optional, about 5 minutes)
+
+With an Oura Ring, Jarvis adds last night's sleep to your morning greeting ("You slept 6 hours 40, sleep score 78, readiness 64, so take it a bit easier today"), and answers "how did I sleep?".
+
+1. Go to https://cloud.ouraring.com/oauth/applications, sign in, and create a new application.
+2. For **Redirect URI**, enter `http://localhost:8889/callback`.
+3. Copy the app's **Client ID** and **Client Secret** into `.env` after `JARVIS_OURA_CLIENT_ID=` and `JARVIS_OURA_CLIENT_SECRET=`.
+4. Run `jarvis.bat --connect-oura` and approve access in the browser. Your health data stays on your PC.
+
 ## Telegram (optional, about 3 minutes)
 
 Message Jarvis from anywhere, even with Tailscale off, and get his alerts (reminders, important emails, meeting briefs, security photos) in Telegram. When he needs permission for something, you get **Allow / Deny** buttons.
@@ -163,6 +176,10 @@ From then on the bot only answers you and ignores everyone else. After 5 wrong p
 - "How much have I spent today?"
 - "What changed in your memory?"
 - From Telegram: "What's on my calendar tomorrow?"
+- "How many days until Christmas?" / "Convert 70 kg to pounds" / "Set a timer for 10 minutes"
+- "Remind me at 3pm to send the report, it's important" ... then "Got it"
+- "Save a routine called start my day: weather, my agenda and play my liked songs" ... then "Start my day"
+- "How did I sleep?" (with Oura connected)
 
 ## Files
 
@@ -177,6 +194,7 @@ From then on the bot only answers you and ignores everyone else. After 5 wrong p
 - `jarvis/spend.py`: API cost tracking and the daily budget. `jarvis/meetings.py`: meeting briefs.
 - `jarvis/watchers.py`: watchers. `jarvis/suggestions.py`: proactive suggestions. `jarvis/memory_tidy.py`: the nightly tidy-up.
 - `jarvis/telegram_bot.py`: the Telegram bot. `jarvis/personality.py`: personalities.
+- `jarvis/quick.py`: free instant answers. `jarvis/routines.py`: routines. `jarvis/oura.py`: Oura sleep.
 - `data/`: long-term memory, notes, conversation log and the HUD access key.
 
 ## Tuning (`.env`)

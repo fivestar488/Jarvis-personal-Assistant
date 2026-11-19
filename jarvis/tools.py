@@ -386,12 +386,15 @@ def _save_reminders(items):
 
 
 @tool("Set a timer or reminder. Jarvis announces it out loud when it's due. Saved to disk, so it survives restarts. "
-      "Give either seconds from now, or an exact time.",
+      "Give either seconds from now, or an exact time. Mark it important for deadlines and things he mustn't miss "
+      "(or when he says 'make sure I don't forget', 'keep reminding me'): it warns 1 hour and 15 minutes before, then "
+      "repeats every few minutes until he says 'got it'.",
       {"message": S("What to say, e.g. 'Your pizza is ready'"),
        "seconds": I("Delay from now in seconds"),
-       "at": S("Exact local time: 'HH:MM' (next occurrence) or 'YYYY-MM-DDTHH:MM'")},
+       "at": S("Exact local time: 'HH:MM' (next occurrence) or 'YYYY-MM-DDTHH:MM'"),
+       "important": B("Warn ahead and repeat until acknowledged")},
       ["message"])
-def set_reminder(message, seconds=None, at=None):
+def set_reminder(message, seconds=None, at=None, important=False):
     now = dt.datetime.now()
     if at:
         if len(at) <= 5:
@@ -405,16 +408,22 @@ def set_reminder(message, seconds=None, at=None):
         due = now + dt.timedelta(seconds=seconds)
     else:
         return "Give either seconds or at."
-    item = {"id": os.urandom(3).hex(), "due": due.isoformat(timespec="seconds"), "message": message}
+    item = {"id": os.urandom(3).hex(), "due": due.isoformat(timespec="seconds"), "message": message,
+            "created": now.isoformat(timespec="seconds")}
+    if important:
+        item["important"] = True
     with _reminder_lock:
         _save_reminders(_load_reminders() + [item])
-    return f"Reminder set for {due:%A %d %b at %H:%M:%S} (id {item['id']})."
+    return (f"{'Important reminder' if important else 'Reminder'} set for {due:%A %d %b at %H:%M:%S} (id {item['id']})."
+            + (" I'll warn ahead and keep reminding until you say 'got it'." if important else ""))
 
 
 @tool("List upcoming reminders.")
 def list_reminders():
     items = sorted(_load_reminders(), key=lambda r: r["due"])
-    return "\n".join(f"[{r['id']}] {r['due'].replace('T', ' ')} — {r['message']}" for r in items) or "No reminders set."
+    return "\n".join(f"[{r['id']}] {r['due'].replace('T', ' ')} — {r['message']}"
+                     + (" (repeating until you say 'got it')" if r.get("nag") else " (important)" if r.get("important") else "")
+                     for r in items) or "No reminders set."
 
 
 @tool("Cancel reminders by id, or by text contained in the message.", {"match": S("Reminder id or part of its message")}, ["match"])
@@ -429,6 +438,79 @@ def cancel_reminder(match):
     return f"Cancelled {len(items) - len(kept)} reminder(s)."
 
 
+@tool("Stop an important reminder from repeating, when the user says 'got it', 'done', 'okay okay' or 'stop "
+      "reminding me'. With no match, it stops every reminder that's currently repeating.",
+      {"match": S("Optional: reminder id or part of its message")})
+def acknowledge_reminder(match=""):
+    match = match.strip().lower()
+    with _reminder_lock:
+        items = _load_reminders()
+        done = [r for r in items if r.get("nag") and (not match or r["id"] == match or match in r["message"].lower())]
+        _save_reminders([r for r in items if r not in done])
+    if not done:
+        return "No reminder is repeating right now."
+    return "Got it. Stopped: " + "; ".join(r["message"] for r in done) + "."
+
+
+# Important reminders: early warnings, then they repeat until acknowledged (but not all night, and not forever).
+NAG_EVERY_MINUTES = 5
+NAG_MAX = 6                 # repeats after the first alert, then it stops
+EARLY_WARNINGS = (60, 15)   # minutes before an important reminder
+QUIET_HOURS = (23, 7)       # no repeats between 11 PM and 7 AM
+
+
+def _quiet(now):
+    start, end = QUIET_HOURS
+    return now.hour >= start or now.hour < end
+
+
+def check_reminders(now=None):
+    """One pass of the reminder loop. Returns the alerts it sent as (title, message, ack_id), for testing."""
+    from . import notify
+    now = now or dt.datetime.now()
+    alerts, changed = [], False
+    with _reminder_lock:
+        items, keep = _load_reminders(), []
+        for r in items:
+            due = dt.datetime.fromisoformat(r["due"])
+            if r.get("nag"):  # important and overdue: repeat until "got it"
+                if now >= dt.datetime.fromisoformat(r["nag"]["next"]):
+                    changed = True
+                    if r["nag"]["count"] >= NAG_MAX:
+                        continue  # stop for good after the last repeat
+                    if not _quiet(now):
+                        r["nag"]["count"] += 1
+                        alerts.append(("Reminder", f"Still waiting on this: {r['message']}. Say 'got it' when it's done.", r["id"]))
+                    r["nag"]["next"] = (now + dt.timedelta(minutes=NAG_EVERY_MINUTES)).isoformat(timespec="seconds")
+                keep.append(r)
+            elif due <= now:
+                changed = True
+                missed = due < _started_at
+                text = (f"While I was offline you had a reminder for {due:%A at %H:%M}: {r['message']}" if missed
+                        else f"Reminder: {r['message']}")
+                if r.get("important"):
+                    alerts.append(("Reminder", text.rstrip(".!") + ". Say 'got it' when it's done.", r["id"]))
+                    r["nag"] = {"count": 0, "next": (now + dt.timedelta(minutes=NAG_EVERY_MINUTES)).isoformat(timespec="seconds")}
+                    keep.append(r)
+                else:
+                    alerts.append(("Missed reminder" if missed else "Reminder", text, None))
+            else:
+                if r.get("important") and r.get("created"):
+                    left = (due - now).total_seconds() / 60
+                    ahead = (due - dt.datetime.fromisoformat(r["created"])).total_seconds() / 60
+                    passed = [m for m in EARLY_WARNINGS if left <= m < ahead and m not in r.get("warned", [])]
+                    if passed:  # one heads-up, even if Jarvis was off for an earlier one
+                        changed = True
+                        r["warned"] = r.get("warned", []) + passed
+                        alerts.append(("Coming up", f"Heads up: in {max(1, round(left))} minutes, {r['message']}.", None))
+                keep.append(r)
+        if changed:
+            _save_reminders(keep)
+    for title, message, ack in alerts:
+        notify.alert(title, message, ack=ack)
+    return alerts
+
+
 def start_reminders():
     """Background loop that announces due reminders, including any that came due while Jarvis was off."""
     global _reminder_loop
@@ -437,19 +519,10 @@ def start_reminders():
 
     def loop():
         while True:
-            now = dt.datetime.now()
-            with _reminder_lock:
-                items = _load_reminders()
-                due = [r for r in items if dt.datetime.fromisoformat(r["due"]) <= now]
-                if due:
-                    _save_reminders([r for r in items if r not in due])
-            for r in due:
-                from . import notify
-                when = dt.datetime.fromisoformat(r["due"])
-                if when < _started_at:
-                    notify.alert("Missed reminder", f"While I was offline you had a reminder for {when:%A at %H:%M}: {r['message']}")
-                else:
-                    notify.alert("Reminder", f"Reminder: {r['message']}")
+            try:
+                check_reminders()
+            except Exception:
+                pass
             time.sleep(3)
 
     _reminder_loop = threading.Thread(target=loop, daemon=True)
@@ -522,5 +595,5 @@ def read_notes():
     return config.NOTES_FILE.read_text(encoding="utf-8") if config.NOTES_FILE.exists() else "No notes yet."
 
 
-from . import (google_tools, memory_tidy, personality, security, spend, spotify_tools,  # noqa: E402,F401
-               watchers)  # (importing them registers their tools)
+from . import (google_tools, memory_tidy, oura, personality, routines, security, spend,  # noqa: E402,F401
+               spotify_tools, watchers)  # (importing them registers their tools)

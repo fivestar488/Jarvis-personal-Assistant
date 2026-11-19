@@ -94,6 +94,17 @@ function addMsg(kind, text) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+// "Got it" on a repeating (important) reminder, under its alert in the comms log.
+function addAckButton(id) {
+  const card = logEl.lastElementChild;
+  if (!card) return;
+  const row = document.createElement("div");
+  row.className = "suggest-actions";
+  row.innerHTML = `<button data-accept="1">GOT IT</button>`;
+  row.querySelector("button").onclick = (e) => { send({ type: "ack_reminder", id }); e.target.disabled = true; };
+  card.appendChild(row);
+}
+
 function showSuggestion(id, text) {
   if (document.querySelector(`.msg.suggest[data-id="${id}"]`)) return;  // already shown (reconnect)
   const el = document.createElement("div");
@@ -199,8 +210,37 @@ function buildSuitFilter() {
 document.addEventListener("pointerdown", initAudio);
 document.addEventListener("keydown", initAudio);
 
-function stopAudio() {
+function stopSrc() {
   if (currentSrc) { const s = currentSrc; currentSrc = null; try { s.stop(); } catch {} }
+}
+
+// Interrupting Jarvis (barge-in, tapping the reactor, the mic): stop talking, but remember what he hadn't
+// said yet, so "continue" picks up from the sentence he was on.
+function stopAudio() {
+  if (speaking) resumable = [speaking, ...speechQueue];
+  speechQueue = []; speaking = null; replyDone = false;
+  stopSrc();
+}
+
+// ---------- speech queue: replies arrive sentence by sentence and are played in order ----------
+let speechQueue = [], speaking = null, resumable = [], replyDone = false;
+
+function queueSpeech(audio, text) {
+  speechQueue.push({ audio, text });
+  if (!speaking) playNextSpeech();
+}
+
+function playNextSpeech() {
+  speaking = speechQueue.shift() || null;
+  if (!speaking) {
+    if (replyDone) { replyDone = false; afterSpeaking(); }
+    return;
+  }
+  spokenText = speaking.text;
+  setState("speaking");
+  showSubtitle(speaking.text);
+  const item = speaking;
+  play(item.audio, () => { if (speaking === item) playNextSpeech(); });
 }
 
 async function play(b64, after) {
@@ -209,7 +249,7 @@ async function play(b64, after) {
   try {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const buffer = await actx.decodeAudioData(bytes.buffer);
-    stopAudio();
+    stopSrc();
     // In hands-free mode keep listening while he talks, so you can cut in with "Jarvis..." or "stop".
     if (!handsFree) stopListening();
     else if (!rec) startListening("hands");
@@ -284,6 +324,14 @@ function send(obj) {
 function submit(text, spoken = false) {
   text = text.trim();
   if (!text) return;
+  // "Continue" after interrupting him: finish what he was saying, right here (no need to ask the PC again).
+  if (resumable.length && ["continue", "go on", "carry on", "keep going", "continue please"].includes(bareWords(text))) {
+    input.value = "";
+    cancelCapture();
+    speechQueue = resumable; resumable = []; replyDone = true;
+    playNextSpeech();
+    return;
+  }
   cancelCapture();
   cancelClapWait();
   initAudio();
@@ -407,15 +455,23 @@ function handle(ev) {
       addActivity(ev.text);
       showSubtitle("▸ " + ev.text, true);
       break;
+    case "speech":  // one sentence of a reply that's still being written: speak it straight away
+      if (voiceOn && ev.origin === myId) {
+        if (!speaking && !speechQueue.length) resumable = [];  // a new answer replaces the old "continue"
+        queueSpeech(ev.audio, ev.text);
+      }
+      break;
     case "reply":
     case "announce": {
       const alert = ev.type === "announce";
       addMsg(alert ? "alert" : "jarvis", ev.text);
-      showSubtitle(ev.text);
+      if (ev.ack) addAckButton(ev.ack);
+      if (!ev.streamed) showSubtitle(ev.text);
       blip(alert ? 660 : 990, 0.08);
       const mine = alert || ev.origin === myId;
       if (activeTab !== "comms") document.querySelector('.tabs [data-tab="comms"]').classList.add("ping");
-      if (voiceOn && mine && ev.audio) { spokenText = ev.text; setState("speaking"); play(ev.audio, afterSpeaking); }
+      if (voiceOn && mine && ev.audio) { replyDone = true; queueSpeech(ev.audio, ev.text); }
+      else if (ev.streamed && mine && (speaking || speechQueue.length)) replyDone = true;  // afterSpeaking once the last sentence ends
       else if (!currentSrc) afterSpeaking();
       break;
     }

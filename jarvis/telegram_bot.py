@@ -56,8 +56,9 @@ def send(text, chat_id=None):
         _call("sendMessage", chat_id=chat_id, text=text[i:i + 4000] or "(empty)")
 
 
-def alert(title, message, image_path=None):
-    """Called by notify.alert: reminders, important emails, meeting briefs and security alerts, with the photo."""
+def alert(title, message, image_path=None, ack=None):
+    """Called by notify.alert: reminders, important emails, meeting briefs and security alerts, with the photo.
+    ack: a repeating reminder's id, which adds a "Got it" button."""
     chat_id = owner()
     if not (enabled() and chat_id):
         return
@@ -65,6 +66,9 @@ def alert(title, message, image_path=None):
         if image_path:
             with open(image_path, "rb") as f:
                 _call("sendPhoto", timeout=60, files={"photo": f}, chat_id=chat_id, caption=f"{title}: {message}"[:1000])
+        elif ack:
+            _call("sendMessage", chat_id=chat_id, text=f"🔔 {title}\n{message}",
+                  reply_markup={"inline_keyboard": [[{"text": "✅ Got it", "callback_data": f"ak:{ack}"}]]})
         else:
             send(f"🔔 {title}\n{message}", chat_id)
     except Exception:
@@ -139,6 +143,10 @@ def _handle(update):
         elif kind in ("sa:", "sd:"):
             result = _on_suggestion(target, kind == "sa:") if _on_suggestion else None
             _call("answerCallbackQuery", callback_query_id=q["id"], text=(result or "Already answered")[:190])
+        elif kind == "ak:":  # "Got it" on a repeating reminder
+            from .tools import acknowledge_reminder
+            _call("answerCallbackQuery", callback_query_id=q["id"], text=acknowledge_reminder(target)[:190])
+            _call("editMessageReplyMarkup", chat_id=me, message_id=q["message"]["message_id"], reply_markup={"inline_keyboard": []})
         return
     m = update.get("message") or {}
     chat, user, text = m.get("chat", {}), m.get("from", {}), (m.get("text") or "").strip()

@@ -255,6 +255,7 @@ def main():
     parser.add_argument("--no-browser", action="store_true", help="don't open the HUD automatically")
     parser.add_argument("--connect-google", action="store_true", help="sign in to Gmail & Google Calendar")
     parser.add_argument("--connect-spotify", action="store_true", help="sign in to Spotify")
+    parser.add_argument("--connect-oura", action="store_true", help="sign in to your Oura Ring account")
     args = parser.parse_args()
 
     console.print(BANNER)
@@ -272,6 +273,12 @@ def main():
         console.print("[cyan]Opening Spotify sign-in in your browser...[/]")
         spotify_tools.connect()
         console.print("[bold green]Spotify connected.[/]")
+        return
+    if args.connect_oura:
+        from jarvis import oura
+        console.print("[cyan]Opening Oura sign-in in your browser...[/]")
+        oura.connect()
+        console.print("[bold green]Oura connected.[/] " + (oura.sleep_report() or ""))
         return
     if not os.getenv("ANTHROPIC_API_KEY"):
         console.print("[bold red]No ANTHROPIC_API_KEY found.[/] Open the .env file and paste your key in "

@@ -18,18 +18,22 @@ _lock = threading.Lock()
 public_base_url = None
 
 
-def alert(title, message, image_path=None, speak=True):
-    """Tell the user something everywhere: announced in the HUD / voice, and pushed to their phone."""
+def alert(title, message, image_path=None, speak=True, ack=None):
+    """Tell the user something everywhere: announced in the HUD / voice, and pushed to their phone.
+    ack: the id of a repeating reminder, so the HUD and Telegram show a "Got it" button that stops it."""
     from . import tools
     if speak and tools.ui:
-        tools.ui.announce(message)
+        try:
+            tools.ui.announce(message, ack=ack)
+        except TypeError:  # the terminal interface has no buttons
+            tools.ui.announce(message)
     image_url = None
     if image_path and public_base_url:
         from .server import access_key
         image_url = f"{public_base_url}/api/snapshot/{image_path.name}?key={access_key()}"
     threading.Thread(target=push, args=(title, message, image_url), daemon=True).start()
     from . import telegram_bot
-    threading.Thread(target=telegram_bot.alert, args=(title, message, image_path), daemon=True).start()
+    threading.Thread(target=telegram_bot.alert, args=(title, message, image_path, ack), daemon=True).start()
 
 
 # ---------------------------------------------------------------- web push

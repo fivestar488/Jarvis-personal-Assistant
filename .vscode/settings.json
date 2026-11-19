@@ -1,3 +1,4 @@
 {
-  "python.defaultInterpreterPath": "${env:LOCALAPPDATA}\\JarvisVenv\\Scripts\\python.exe"
+  "python.defaultInterpreterPath": "${env:LOCALAPPDATA}\\JarvisVenv\\Scripts\\python.exe",
+  "python.terminal.useEnvFile": true
 }

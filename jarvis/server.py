@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from . import (briefing, config, email_watch, feeds, google_tools, meetings, memory_tidy, network, notify, security,
                spend, suggestions, telegram_bot, tools, watchers)
 from .brain import Brain
-from .voice import synthesize, transcribe_pcm, warm_whisper
+from .voice import SentenceSplitter, synthesize, transcribe_pcm, warm_whisper
 
 WEB_DIR = config.ROOT / "web"
 KEY_FILE = config.DATA_DIR / "access_key.txt"
@@ -152,12 +152,12 @@ class HudInterface:
             from_thread(broadcast({"type": "confirm_done", "id": cid}))
             telegram_bot.confirm_done(cid)
 
-    def announce(self, text):
+    def announce(self, text, ack=None):
         async def send():
             if not clients:
                 held_announcements.append(text)  # delivered when a screen next connects
                 return
-            await broadcast({"type": "announce", "text": text, "audio": await voice_for(text)})
+            await broadcast({"type": "announce", "text": text, "audio": await voice_for(text), "ack": ack})
         from_thread(send())
 
 
@@ -199,9 +199,43 @@ async def handle_message(text, origin):
             reply = await asyncio.to_thread(briefing.welcome_home)
         else:
             await broadcast({"type": "state", "state": "thinking", "origin": origin, "audio": await thinking_audio()})
-            reply = await asyncio.to_thread(brain.respond, text)
+            if origin == "telegram":  # no screen to speak on: no need to stream
+                reply = await asyncio.to_thread(brain.respond, text)
+            else:
+                reply, spoken = await respond_streaming(text, origin)
+                if spoken:  # already spoken sentence by sentence: just show the text
+                    await broadcast({"type": "reply", "text": reply, "audio": None, "streamed": True, "origin": origin})
+                    return reply
         await broadcast({"type": "reply", "text": reply, "audio": await voice_for(reply), "origin": origin})
         return reply
+
+
+async def respond_streaming(text, origin):
+    """Ask the brain with streaming: each sentence is voiced and sent to the screen as soon as it's written, so
+    Jarvis starts talking well before the whole answer is ready. Returns (reply, whether anything was spoken)."""
+    sentences = asyncio.Queue()
+    spoken = []
+
+    async def speak():  # one sentence at a time, in order
+        while (sentence := await sentences.get()) is not None:
+            audio = await voice_for(sentence)
+            if audio:
+                spoken.append(sentence)
+                await broadcast({"type": "speech", "text": sentence, "audio": audio, "origin": origin})
+
+    speaker = asyncio.create_task(speak())
+    splitter = SentenceSplitter(lambda s: loop.call_soon_threadsafe(sentences.put_nowait, s))
+
+    def on_text(piece):  # runs in the brain's thread
+        splitter.feed(piece) if piece is not None else splitter.flush()
+
+    try:
+        reply = await asyncio.to_thread(brain.respond, text, on_text)
+    finally:
+        splitter.flush()
+        loop.call_soon_threadsafe(sentences.put_nowait, None)
+        await speaker
+    return reply, bool(spoken)
 
 
 def telegram_message(text):
@@ -379,6 +413,9 @@ async def websocket(ws: WebSocket, key: str = ""):
                 future = pending_confirms.get(event.get("id"))
                 if future and not future.done():
                     future.set_result(bool(event.get("answer")))
+            elif event.get("type") == "ack_reminder":  # "Got it" on a repeating reminder
+                result = await asyncio.to_thread(tools.acknowledge_reminder, str(event.get("id", "")))
+                await ws.send_json({"type": "status", "text": result})
             elif event.get("type") == "suggestion_reply":
                 result = await asyncio.to_thread(suggestions.answer, str(event.get("id")), bool(event.get("accept")))
                 if result:
