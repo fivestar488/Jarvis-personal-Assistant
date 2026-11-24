@@ -141,6 +141,20 @@ Message Jarvis from anywhere, even with Tailscale off, and get his alerts (remin
 
 From then on the bot only answers you and ignores everyone else. After 5 wrong pairing codes it locks until Jarvis restarts. To move it to a different Telegram account, delete `data/telegram_owner.json` and pair again. Jarvis must be running on the PC (in HUD mode, `jarvis.bat`) for the bot to answer.
 
+## Free offline mode (optional, no API credit)
+
+> **Optional: you don't need this.** Jarvis runs on your Claude API key as normal. This is just a free backup for when your credit runs out or the internet is down. Skip it if you're happy using Claude.
+
+Jarvis can also think with a small AI model running on your own PC through [Ollama](https://ollama.com). It's free, works without internet, and nothing you say leaves the computer. It's less clever than Claude, though. It can't search the web or see the screen, and without a graphics card it takes a few seconds per reply, longer for harder questions.
+
+1. Install Ollama: `winget install Ollama.Ollama` (or download it from ollama.com).
+2. Download the model: `ollama pull llama3.2:3b` (about 2 GB).
+3. In `.env`, set `JARVIS_BRAIN=auto` or `JARVIS_BRAIN=local`.
+   - `auto`: Claude normally, switching to offline mode when the credit runs out, the daily budget is spent or the internet is down. It goes back to Claude by itself.
+   - `local`: always offline.
+
+Free instant answers work in every mode, with or without credit. They cover the time, sums, units, timers, reminders like "remind me to call mum in 20 minutes", "open Spotify", pause/skip and the weather. A faster PC can use a bigger, smarter model: set `JARVIS_LOCAL_MODEL=qwen3:8b` (or `llama3.1:8b`).
+
 ## Things to try
 
 - "Introduce yourself"

@@ -7,7 +7,7 @@ import time
 
 import anthropic
 
-from . import config, personality, quick, spend, tools
+from . import config, local_brain, personality, quick, spend, tools
 
 
 def model_options(model):
@@ -135,6 +135,7 @@ class Brain:
         self.messages = []
         self.on_status = on_status or (lambda text: None)
         self.last_active = time.monotonic()
+        self.local = local_brain.LocalBrain()  # free mode (JARVIS_BRAIN=local or auto)
 
     def fresh_start(self):
         """Start a new conversation but keep continuity: the system prompt carries memories and the saved recent
@@ -147,6 +148,27 @@ class Brain:
         clear_recent()
         self.system = build_system_prompt(self.mode)  # picks up anything remembered this session
         self.messages = []
+        self.local.reset()
+
+    def _use_local(self):
+        if config.BRAIN == "local":
+            return True
+        # Auto: Claude failed recently (no credit, offline), or today's budget is spent
+        return config.BRAIN == "auto" and (local_brain.claude_resting() or spend.over_budget())
+
+    def _answer_locally(self, text, on_text):
+        try:
+            reply = self.local.ask(text, on_text, self.on_status)
+        except anthropic.APITimeoutError:
+            return "My offline brain took too long to answer. Try a shorter request."
+        except anthropic.APIConnectionError:
+            return "My offline brain isn't running. Please start Ollama and try again."
+        except anthropic.APIError as e:
+            if "not found" in str(e).lower():
+                return f"The offline model isn't downloaded yet. Run: ollama pull {config.LOCAL_MODEL}"
+            return f"My offline brain had a problem: {e.message}"
+        save_exchange(text, reply)
+        return reply
 
     def respond(self, text, on_text=None):
         """Like ask(), but turns API problems into something Jarvis can say. Simple requests (the time, sums,
@@ -158,6 +180,8 @@ class Brain:
         if quick_reply:
             save_exchange(text, quick_reply)
             return quick_reply
+        if self._use_local():
+            return self._answer_locally(text, on_text)
         # Idle for a while: the prompt cache has long expired, so re-sending the old conversation would cost
         # full price for every token of it. Start fresh instead (he still has the saved recent exchanges).
         if self.messages and time.monotonic() - self.last_active > config.IDLE_RESET_MINUTES * 60:
@@ -170,13 +194,23 @@ class Brain:
             return reply
         except anthropic.APIError as e:
             del self.messages[checkpoint:]  # drop the half-finished exchange so the next request starts clean
+            no_credit = isinstance(e, anthropic.BadRequestError) and "credit balance" in str(e.message).lower()
+            if config.BRAIN == "auto" and local_brain.available():
+                # Claude can't answer: no credit, bad key or offline means stay local for a while; a busy
+                # moment (rate limit, overload) just sends this one request to the local model.
+                if no_credit or isinstance(e, (anthropic.AuthenticationError, anthropic.APIConnectionError)):
+                    local_brain.rest_claude()
+                    self.on_status("Claude unavailable: offline mode")
+                if no_credit or isinstance(e, (anthropic.AuthenticationError, anthropic.APIConnectionError,
+                                               anthropic.RateLimitError, anthropic.InternalServerError)):
+                    return self._answer_locally(text, on_text)
             if isinstance(e, anthropic.AuthenticationError):
                 return "My API key isn't working. Please check ANTHROPIC_API_KEY in the .env file."
             if isinstance(e, anthropic.RateLimitError):
                 return "I'm being rate limited at the moment. Give me a few seconds and try again."
             if isinstance(e, anthropic.APIConnectionError):
                 return "I can't reach my brain. Please check the internet connection."
-            if isinstance(e, anthropic.BadRequestError) and "credit balance" in str(e.message).lower():
+            if no_credit:
                 return ("My API credit has run out, sir. Top it up at console.anthropic.com, under Settings, "
                         "Billing, and I'll be right back.")
             return f"Something went wrong on the API side: {e.message}"

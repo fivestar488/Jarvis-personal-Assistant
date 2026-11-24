@@ -55,9 +55,22 @@ def location():
     def fetch():
         if config.LOCATION:
             return geocode(config.LOCATION)
-        ip = _get("https://ipapi.co/json/")
-        return {"name": f"{ip['city']}, {ip.get('region_code') or ip.get('country_code')}",
-                "lat": ip["latitude"], "lon": ip["longitude"]}
+        # Free IP-location services sometimes refuse requests, so try a few in turn.
+        services = [
+            ("https://ipapi.co/json/", lambda d: (d["city"], d.get("region_code") or d.get("country_code"),
+                                                   d["latitude"], d["longitude"])),
+            ("https://ipwho.is/", lambda d: (d["city"], d.get("region_code") or d.get("country_code"),
+                                             d["latitude"], d["longitude"])),
+            ("https://ipinfo.io/json", lambda d: (d["city"], d.get("region") or d.get("country"),
+                                                  *map(float, d["loc"].split(",")))),
+        ]
+        for url, read in services:
+            try:
+                city, region, lat, lon = read(_get(url))
+                return {"name": f"{city}, {region}", "lat": lat, "lon": lon}
+            except Exception:
+                continue
+        raise ValueError("Couldn't work out your location. Set JARVIS_LOCATION in the .env file.")
     return _cached("location", 6 * 3600, fetch)
 
 

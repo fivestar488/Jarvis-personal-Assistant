@@ -27,6 +27,11 @@ MODEL = os.getenv("JARVIS_MODEL", "claude-opus-5-5")
 EFFORT = os.getenv("JARVIS_EFFORT", "low")
 # Background jobs (sorting new emails) always use the cheapest model, whatever MODEL is set to.
 HELPER_MODEL = os.getenv("JARVIS_HELPER_MODEL") or "claude-haiku-5-5"
+# Free mode with a model on this PC through Ollama (see jarvis/local_brain.py):
+#   claude = always Claude; local = always the local model; auto = Claude, or the local model when Claude can't answer
+BRAIN = (os.getenv("JARVIS_BRAIN") or "claude").strip().lower()
+LOCAL_MODEL = os.getenv("JARVIS_LOCAL_MODEL") or "llama3.2:3b"
+OLLAMA_URL = os.getenv("JARVIS_OLLAMA_URL") or "http://localhost:11434"
 # Daily API budget in dollars: a warning at 80%, and at 100% the cheapest model and no background jobs until
 # midnight (he still answers). 0 = no budget.
 DAILY_BUDGET = float(os.getenv("JARVIS_DAILY_BUDGET") or 1.00)

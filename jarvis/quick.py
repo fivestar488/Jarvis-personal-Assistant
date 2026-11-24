@@ -1,5 +1,6 @@
 """Free, instant answers: simple requests answered in plain Python before Claude is called (no API cost, no wait).
-The time and date, "how many days until Christmas", percentages and sums, unit conversions, timers, volume,
+The time and date, "how many days until Christmas", percentages and sums, unit conversions, timers, reminders
+("remind me to call mum in 20 minutes / at 5 pm"), volume and pause/skip, "open <app>", the weather,
 "got it" for a repeating reminder, and saved routines by name. The patterns are strict on purpose: anything that
 doesn't match exactly ("what time is it in Tokyo") goes to Claude as usual."""
 import ast
@@ -166,6 +167,10 @@ def answer(text):
             plural = lambda u, n: u if n == 1 or u in abbreviations or u.endswith("s") or u in ("feet", "inches", "stone") else u + "s"
             return f"{_fmt(value)} {plural(a, value)} is {_fmt(out)} {plural(b, out)}."
 
+    reply = _reminder(t, now)
+    if reply:
+        return reply
+
     m = (re.fullmatch(r"(?:set )?(?:a )?timer (?:for )?(\d+) (second|minute|hour)s?", t)
          or re.fullmatch(r"(?:set )?(?:a |an )?(\d+) (second|minute|hour) timer", t))
     if m:
@@ -188,4 +193,105 @@ def answer(text):
         pyautogui.press("volumedown", presses=50)       # to zero (each press is 2%)
         pyautogui.press("volumeup", presses=round(level / 2))
         return f"Volume set to about {level}%."
+    if re.fullmatch(r"pause|pause (the |this )?(music|song)", t):
+        tools.media_control("playpause")
+        return "Paused."
+    if re.fullmatch(r"resume|resume (the )?music|play|unpause", t):
+        tools.media_control("playpause")
+        return "Resuming."
+    if re.fullmatch(r"next|skip|next (song|track)|skip (this |the )?(song|track)", t):
+        tools.media_control("next")
+        return "Skipping."
+    if re.fullmatch(r"previous|previous (song|track)|go back a song|last song", t):
+        tools.media_control("previous")
+        return "Going back a song."
+
+    # "Open Spotify": only when the app is actually found; otherwise Claude works out what was meant.
+    m = re.fullmatch(r"(?:open|launch|start) (?:up )?(?:the )?([a-z0-9 ]{2,30}?)(?: app)?", t)
+    if m and len(m.group(1).split()) <= 3:
+        name = m.group(1)
+        try:
+            # "chrome" -> "Google Chrome", "word" -> "Microsoft Word": the name as whole words of a real app's name
+            known = name in tools.APP_ALIASES or any(f" {name} " in f" {a.lower()} " for a in tools._get_start_apps())
+        except Exception:
+            known = False
+        if known:  # an exact app name only: anything fuzzier goes to the AI
+            reply = tools.open_application(name)
+            if reply.startswith("Opened"):
+                return reply
+
+    if re.fullmatch(r"(whats|what is|hows|how is) the weather( like)?( today| now| outside| right now)?|weather|"
+                    r"weather (today|now)|is it (cold|hot|raining|warm) (outside|today)", t):
+        return _weather()
     return None
+
+
+NUMBER_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+                "eight": 8, "nine": 9, "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30, "forty five": 45}
+SECONDS = {"second": 1, "minute": 60, "hour": 3600, "day": 86400}
+AMOUNT = r"(?P<n>\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|fifteen|twenty|thirty|forty five|half an)"
+
+
+def _your(task):
+    """'call my mum' -> 'call your mum' (for the spoken confirmation)."""
+    swap = {"my": "your", "me": "you", "myself": "yourself", "i": "you", "im": "youre", "ive": "youve"}
+    return " ".join(swap.get(w, w) for w in task.split())
+
+
+def _reminder(t, now):
+    """'remind me to call mum in 20 minutes', 'remind me in an hour to stretch', 'remind me to leave at 5:30 pm'."""
+    from . import tools
+    m = (re.fullmatch(rf"remind me (?:to )?(?P<task>.+?) in {AMOUNT} (?P<unit>second|minute|hour|day)s?", t)
+         or re.fullmatch(rf"remind me in {AMOUNT} (?P<unit>second|minute|hour|day)s? (?:to )?(?P<task>.+)", t))
+    if m:
+        amount, unit = m.group("n"), m.group("unit")
+        if amount == "half an":
+            seconds = SECONDS[unit] // 2
+        else:
+            seconds = (int(amount) if amount.isdigit() else NUMBER_WORDS[amount]) * SECONDS[unit]
+        if not seconds:
+            return None
+        task = m.group("task")
+        tools.set_reminder(task[0].upper() + task[1:] + ".", seconds=seconds)
+        due = now + dt.timedelta(seconds=seconds)
+        if seconds >= 3600:
+            when = f"at {due:%H:%M}" + ("" if due.date() == now.date() else f" on {due:%A}")
+        elif seconds >= 60:
+            when = f"in {seconds // 60} minute{'s' if seconds // 60 != 1 else ''}"
+        else:
+            when = f"in {seconds} second{'s' if seconds != 1 else ''}"
+        return f"Okay, I'll remind you to {_your(task)} {when}."
+    m = re.fullmatch(r"remind me (?:to )?(?P<task>.+?) at (?P<h>\d{1,2})(?::(?P<min>\d{2}))? ?(?P<ampm>am|pm|a\.?m|p\.?m)?", t)
+    if m:
+        hour, minute, ampm = int(m.group("h")), int(m.group("min") or 0), (m.group("ampm") or "").replace(".", "")
+        if hour > 23 or minute > 59 or (ampm and not 1 <= hour <= 12):
+            return None
+        if ampm:
+            hour = hour % 12 + (12 if ampm == "pm" else 0)
+            candidates = [hour]
+        else:
+            candidates = [hour, hour + 12] if 1 <= hour <= 11 else [hour]  # "at 5": whichever 5 o'clock comes next
+        def next_at(h):
+            due = now.replace(hour=h % 24, minute=minute, second=0, microsecond=0)
+            return due if due > now else due + dt.timedelta(days=1)
+        due = min(next_at(h) for h in candidates)
+        task = m.group("task")
+        tools.set_reminder(task[0].upper() + task[1:] + ".", at=due.strftime("%Y-%m-%dT%H:%M"))
+        day = "" if due.date() == now.date() else " tomorrow"
+        return f"Okay, I'll remind you to {_your(task)} at {due:%H:%M}{day}."
+    return None
+
+
+def _weather():
+    from . import feeds
+    try:
+        w = feeds.weather(None)
+    except Exception:
+        return None  # let the AI try (and explain)
+    c, u, today = w["current"], w["units"], (w.get("daily") or [{}])[0]
+    reply = f"It's {c['text'].lower()} and {c['temp']}{u['temp']} in {w['location']['name'].split(',')[0]}"
+    if today.get("high") is not None:
+        reply += f", with a high of {today['high']}{u['temp']} today"
+    if today.get("rain"):
+        reply += f" and a {today['rain']}% chance of rain"
+    return reply + "."
