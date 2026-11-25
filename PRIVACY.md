@@ -42,6 +42,14 @@ Jarvis's use and transfer of information received from Google APIs adheres to th
   Hand tracking runs inside your browser, and the video never leaves your PC. Photos for a scan or a question are sent to the AI model, as above.
 - **Screen:** a screenshot is taken only when you ask about your screen, and is sent to the AI model to answer.
 - **Memory, notes, reminders, meal log, meeting notes and conversation history:** saved only in the `data` folder on your PC.
+- **Your documents (Ask my files):** Jarvis builds a search index of the folders you choose (Documents and Desktop by default), stored only in the `data` folder on your PC. When you ask a question, only the few most relevant passages, with secrets hidden, are sent to the AI model to answer it.
+- **Activity journal:** off unless you turn it on. Once a minute it notes the name and title of the window you're using, on your PC only. Never screenshots.
+- **Clipboard history:** what you copy is kept in memory only while Jarvis runs, never saved to disk. Anything containing a secret is not kept at all.
+- **Perimeter alerts:**
+  - Jarvis reads Windows' own record of failed sign-ins.
+  - It keeps a list of the devices your PC has seen on your Wi-Fi, without scanning the network.
+  - Both stay on your PC.
+  - After three failed sign-ins in 10 minutes, it takes a webcam photo, saved on your PC and sent only to your own phone.
 - **Optional services:** only if you set them up yourself:
   - Spotify, to control your music;
   - Telegram, as your private bot;

@@ -128,7 +128,8 @@ def answer(text):
             return tools.acknowledge_reminder()
         return None
 
-    reply = _scanner(t) or _hologram(t) or _actions(t) or _modes(t) or _meeting(t) or _meals(t) or _credit(t)
+    reply = (_scanner(t) or _hologram(t) or _actions(t) or _modes(t) or _meeting(t) or _meals(t) or _credit(t)
+             or _suit(t))
     if reply:
         return reply
 
@@ -270,6 +271,76 @@ def _modes(t):
     return None
 
 
+POSITION = r"(left|right|top|bottom|top left|top right|bottom left|bottom right|middle|center|centre)"
+
+
+def _suit(t):
+    """The film-style commands: status report, sweeps, protocols, mood mode, windows, perimeter, journal, wrap-ups,
+    clipboard history, the video pane."""
+    from . import cliphistory, desktop, filesearch, journal, perimeter, protocols, vitals, wrap
+    if re.fullmatch(r"(?:give me a |run a )?(?:status|damage|systems?|system status) report|status|systems check|"
+                    r"how are (?:we|the systems|things) (?:doing|looking)", t):
+        return vitals.status(False)
+    if re.fullmatch(r"run (?:a |the )?(?:full )?(?:sweep|systems sweep|diagnostics?|diagnostic sweep)|diagnostics", t):
+        return vitals.status(True)
+    m = re.fullmatch(r"(?:initiate|engage|run|activate|execute|start|begin|commence)(?: the)? (.+?) protocol", t)
+    if m:
+        return protocols.run(m.group(1))
+    if re.fullmatch(r"(?:mood|movie|theatre|theater) mode(?: on)?|lights down|set the mood", t):
+        return desktop.mood(True)
+    if re.fullmatch(r"(?:mood|movie|theatre|theater) mode off|lights up|(?:turn off|end|stop) (?:the )?(?:mood|movie) mode", t):
+        return desktop.mood(False)
+    m = re.fullmatch(rf"(?:put|move|snap) (.+?) (?:on |to )?(?:the )?{POSITION}(?: half| side)?"
+                     rf"(?: and (.+?) (?:on |to )?(?:the )?{POSITION}(?: half| side)?)?", t)
+    if m:
+        placements = [{"app": m.group(1), "position": m.group(2)}]
+        if m.group(3):
+            placements.append({"app": m.group(3), "position": m.group(4)})
+        return desktop.tile(placements)
+    m = re.fullmatch(r"maximi[sz]e (.+)", t)
+    if m:
+        return desktop.tile([{"app": m.group(1), "position": "full"}])
+    if re.fullmatch(r"perimeter(?: report| status| check)?|any intruders|(?:has|did) anyone (?:try to )?(?:log|sign) ?in", t):
+        return perimeter.report()
+    if re.fullmatch(r"index my (?:files|documents)|update (?:the |my )?file index", t):
+        return filesearch.index_now()
+    m = re.fullmatch(r"(?:search my (?:files|documents|notes) for|what do my (?:files|documents|notes) say about) (.+)", t)
+    if m:
+        return filesearch.ask(m.group(1))
+    if re.fullmatch(r"(?:start|turn on|enable) (?:my |the )?(?:activity )?journal|(?:activity )?journal on", t):
+        return journal.switch(True)
+    if re.fullmatch(r"(?:stop|turn off|disable) (?:my |the )?(?:activity )?journal|(?:activity )?journal off", t):
+        return journal.switch(False)
+    if re.fullmatch(r"(?:delete|erase|clear) (?:my |the )?(?:activity )?journal", t):
+        return journal.erase()
+    m = re.fullmatch(r"what (?:was i|have i been) (?:doing|working on)(.*)|what did i (?:do|work on)(.*)", t)
+    if m:
+        return journal.summary((m.group(1) or m.group(2) or "today").strip() or "today")
+    if re.fullmatch(r"(?:wrap up|summari[sz]e)(?: my| the)? day|end of (?:the )?day(?: report| wrap)?|day wrap|how was my day", t):
+        return wrap.day_wrap()
+    if re.fullmatch(r"(?:my |the )?(?:weekly review|week in review)|how was my week|review my week", t):
+        return wrap.week_review()
+    m = re.fullmatch(r"paste (?:what|the thing|the text) i copied(?: about| with| from)? ?(.*)", t)
+    if m:
+        return cliphistory.recall(m.group(1), paste=True)
+    m = re.fullmatch(r"(?:get|bring) back (?:what|the thing) i copied(?: about| with| from)? ?(.*)", t)
+    if m:
+        return cliphistory.recall(m.group(1), paste=False)
+    if re.fullmatch(r"what did i copy(?: earlier| recently| today)?|(?:my )?clipboard history", t):
+        return cliphistory.listing()
+    from . import hologram
+    m = (re.fullmatch(r"(?:play|show)(?: me)? (?:the )?trailer (?:for|of) (.+)", t)
+         or re.fullmatch(r"(?:play|show)(?: me)? (?:the )?(.+?) trailer", t))
+    if m:
+        return hologram.show_video(f"{m.group(1)} trailer")
+    m = re.fullmatch(r"(?:play|show)(?: me)? (?:a |the )?video (?:of|about|on|showing) (.+)", t)
+    if m:
+        return hologram.show_video(m.group(1))
+    if re.fullmatch(r"(?:close|stop|hide)(?: the)? video(?: pane)?", t):
+        return hologram.show_video(close=True)
+    return None
+
+
 UNIT_DAYS = {"day": 1, "week": 7, "month": 30, "year": 365}
 
 
@@ -388,9 +459,25 @@ def _hologram(t):
     if re.fullmatch(r"(?:turn off|disable|stop|deactivate) (?:the )?(?:hand|gesture)s? (?:control|tracking|mode)|"
                     r"(?:hand|gesture) (?:control|tracking|mode) off", t):
         return hologram.control("gestures_off")
+    if re.fullmatch(r"(?:show|open|list)(?: me)? (?:my )?(?:hologram )?workspace|whats in my (?:hologram )?workspace", t):
+        return hologram.workspace_list()
     if not hologram.state["open"]:
         return None
     # While a hologram is open
+    if re.fullmatch(r"(?:show (?:me )?(?:the )?)?wire ?frame(?: mode| view)?", t):
+        return hologram.control("wireframe")
+    if re.fullmatch(r"(?:show (?:me )?(?:the )?)?x ?ray(?: mode| view| it)?|x ?ray it", t):
+        return hologram.control("xray")
+    if re.fullmatch(r"(?:solid|normal)(?: mode| view)?|back to (?:the )?normal(?: view)?", t):
+        return hologram.control("solid")
+    m = re.fullmatch(r"(?:colou?r|make|turn|paint) it (red|blue|green|gold|white|purple|orange|cyan|yellow|pink)", t)
+    if m:
+        return hologram.control("color", m.group(1))
+    m = re.fullmatch(r"(?:save|pin|keep) (?:this|it|the hologram)(?: hologram)?(?: to (?:my )?workspace)?(?: as (.+))?", t)
+    if m:
+        return hologram.control("save", m.group(1) or "")
+    if re.fullmatch(r"(?:throw|send|flick|toss) (?:it|this|the hologram|that) to (?:my )?phone", t):
+        return hologram.control("throw")
     if re.fullmatch(r"(?:close|dismiss|hide) it|(?:thats|that will be|that is) all", t):
         return hologram.control("close")
     if re.fullmatch(r"(?:expand|explode|open up|break down|pull apart)(?: it| that| this| more| further)?", t):

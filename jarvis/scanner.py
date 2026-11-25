@@ -27,8 +27,10 @@ SCAN_SCHEMA = {
             "type": "object", "properties": {"label": {"type": "string"}, "value": {"type": "string"}},
             "required": ["label", "value"], "additionalProperties": False}},
         "tip": {"type": "string"},
+        "box": {"type": "array", "items": {"type": "integer"}},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
     },
-    "required": ["name", "what", "details", "tip"], "additionalProperties": False,
+    "required": ["name", "what", "details", "tip", "box", "confidence"], "additionalProperties": False,
 }
 SCAN_PROMPT = (
     "You are JARVIS's workbench scanner. The photo is from a camera looking down at {owner}'s desk or mat. Identify "
@@ -37,6 +39,8 @@ SCAN_PROMPT = (
     "what: one or two short spoken sentences on what it is and what it's for. "
     "details: 3 to 5 useful facts with short labels (for example how it works, typical price, material, specs, "
     "care or safety). tip: one practical tip or interesting fact. Plain text, no markdown. "
+    "box: where the object is in the photo as [left, top, right, bottom], each 0 to 1000 of the width or height "
+    "([] if nothing's there). confidence: how sure you are what it is. "
     "If the surface is empty or the photo is too unclear, set name to 'Nothing recognised' and say so in what.")
 
 _camera_index = None
@@ -153,7 +157,7 @@ def _ask_local(jpeg, question):
     finally:
         local_brain.prompt_disturbed()  # the chat model may have been swapped out of memory
     name = name.strip(" .\"'\n").split("\n")[0][:60] or "Something"
-    return {"name": name[:1].upper() + name[1:], "what": what, "details": [], "tip": ""}
+    return {"name": name[:1].upper() + name[1:], "what": what, "details": [], "tip": "", "box": [], "confidence": "low"}
 
 
 def analyze(jpeg, question=""):

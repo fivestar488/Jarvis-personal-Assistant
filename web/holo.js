@@ -205,7 +205,7 @@ const Holo = (() => {
   let isOpen = false, current = null, model = null, raf = 0, tweens = [];
   function tween(ms, fn, done) { tweens.push({ t0: performance.now(), ms, fn, done }); }
 
-  async function open(kind, subject, parts, image) {
+  async function open(kind, subject, parts, image, saved = {}) {
     build();
     if (isOpen) clearModel();
     current = { kind, subject };
@@ -225,19 +225,74 @@ const Holo = (() => {
     send({ type: "holo_state", open: true, kind, subject });
     if (!lowPowerOn()) startHands();  // (mouse and touch still work in Low Power Mode)
     syncClapEar();
+    const token = ++openCount;
+    // A scan is plain page content: show it now, so a result that arrives quickly is never missed while the
+    // 3D engine is still loading
+    if (kind === "scan") { buildScan(image); if (saved.result) fillScan(saved.result); }
     try {
       await loadThree();
+      if (token !== openCount) return;  // another hologram was opened meanwhile
       setupThree();
       buildDeco(css("--cyan"));
       if (!raf) { R.clock.getDelta(); raf = requestAnimationFrame(frame); }
     } catch (e) {
       if (kind !== "panel" && kind !== "scan") { showInfo("3D unavailable", e.message); return; }
     }
+    if (token !== openCount) return;
     if (kind === "panel") await buildPanel(subject);
-    else if (kind === "scan") buildScan(image);
     else if (kind === "object") buildObject(subject);
-    else buildTopic(subject, parts);
+    else if (kind === "topic") buildTopic(subject, parts, saved.tree);
   }
+  let openCount = 0;
+
+  // What's on screen, so it can be saved to the workspace or thrown to the phone and rebuilt exactly
+  function spec() {
+    if (!isOpen || !current) return null;
+    const s = { kind: current.kind, subject: current.subject };
+    if (model?.kind === "topic") {
+      const ser = (n) => ({ name: n.name, detail: n.detail, children: n.children.map(ser) });
+      s.tree = ser(model.root);
+    }
+    if (model?.kind === "scan") {
+      s.image = el.sheet.querySelector(".scan-photo img")?.src;
+      s.result = model.result;
+    }
+    return s;
+  }
+  const isMainScreen = () => matchMedia("(pointer: fine)").matches;  // the PC, not the phone
+
+  // Workshop looks: wireframe, x-ray, a new colour, or back to normal
+  const COLORS = { red: "#ff3b30", blue: "#3fc8ff", green: "#39ff88", gold: "#ffc23d", white: "#ffffff",
+                   purple: "#b36bff", orange: "#ff9a1f", cyan: "#3fe8ff", yellow: "#ffe14d", pink: "#ff6bd5" };
+  function restyle(mode, color) {
+    if (!model?.group) return;
+    model.group.traverse((o) => {
+      if (o.isSprite) return;  // labels stay readable
+      for (const m of [].concat(o.material || [])) {
+        m.userData.orig ||= { opacity: m.opacity, color: m.color ? m.color.getHex() : null };
+        const orig = m.userData.orig, fill = o.isMesh && !m.wireframe;
+        if (mode === "solid") { m.opacity = orig.opacity; if (m.color && orig.color != null) m.color.setHex(orig.color); }
+        else if (mode === "wireframe") m.opacity = fill ? 0 : Math.min(1, orig.opacity * 1.4);
+        else if (mode === "xray") m.opacity = fill ? 0.04 : orig.opacity * 0.45;
+        else if (mode === "color" && m.color) m.color.set(color);
+      }
+    });
+    beep(mode === "solid" ? 520 : 880, 0.06);
+  }
+
+  // A video in a floating holographic pane ("play the trailer for...")
+  function showVideo(id, title) {
+    closeVideo();
+    const box = document.createElement("div");
+    box.id = "holo-video";
+    box.innerHTML = `<div class="hv-head"><span>${esc(title || "VIDEO")}</span><button type="button">CLOSE</button></div>
+      <div class="hv-frame"><iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0&modestbranding=1"
+      allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="${esc(title || "Video")}"></iframe></div>`;
+    box.querySelector("button").onclick = closeVideo;
+    document.body.appendChild(box);
+    beep(660, 0.06); setTimeout(() => beep(990, 0.08), 80);
+  }
+  function closeVideo() { document.getElementById("holo-video")?.remove(); }
 
   function clearModel() {
     if (model?.group) dispose(model.group);
@@ -301,7 +356,13 @@ const Holo = (() => {
   }
 
   // ================= TOPIC: a 3D map that expands =================
-  function buildTopic(subject, parts) {
+  function growTree(node, tree) {  // rebuild a saved map, part by part, with no AI calls
+    if (!tree?.children?.length) return;
+    addChildren(node, tree.children.map((c) => ({ name: c.name, detail: c.detail })));
+    node.children.forEach((child, i) => growTree(child, tree.children[i]));
+  }
+
+  function buildTopic(subject, parts, tree) {
     const color = css("--cyan"), hi = css("--cyan-hi"), accent = css("--amber");
     const group = new THREE.Group();
     R.content.add(group);
@@ -321,7 +382,8 @@ const Holo = (() => {
       }
     };
     select(root);
-    if (parts?.length) addChildren(root, parts);
+    if (tree) growTree(root, tree);
+    else if (parts?.length) addChildren(root, parts);
     else expandNode(root);
   }
 
@@ -752,10 +814,25 @@ const Holo = (() => {
     model = { kind: "scan", result: null };
     el.title.textContent = "Scanning";
     el.sheet.innerHTML = `<div class="hc wide scan">
-      <div class="scan-photo">${image ? `<img alt="Desk camera photo" src="${image}">` : ""}<i class="scan-line"></i></div>
+      <div class="scan-photo">${image ? `<img alt="Desk camera photo" src="${image}">` : ""}<i class="scan-line"></i>
+        <div class="reticle"><i></i><i></i><i></i><i></i><span></span></div></div>
       <div class="scan-result"><small>IDENTIFYING</small><h3>...</h3><p class="what"></p><dl></dl><p class="tip"></p></div></div>`;
     showBusy("SCANNING OBJECT");
-    beep(300, 0.3);
+    if (typeof sfx !== "undefined") sfx.scan(); else beep(300, 0.3);
+  }
+
+  // Target lock: brackets close in on where the object is, with its name and how sure Jarvis is
+  function lockOn(r) {
+    const ret = el.sheet.querySelector(".reticle");
+    if (!ret) return;
+    const nothing = /^(nothing|scan failed)/i.test(r.name || "");
+    const b = Array.isArray(r.box) && r.box.length === 4 && r.box[2] > r.box[0] && r.box[3] > r.box[1]
+      ? r.box.map((v) => Math.max(0, Math.min(1000, v)) / 10) : [30, 25, 70, 75];
+    Object.assign(ret.style, { left: `${b[0]}%`, top: `${b[1]}%`, width: `${b[2] - b[0]}%`, height: `${b[3] - b[1]}%` });
+    const conf = r.confidence ? ` · ${r.confidence.toUpperCase()} CONFIDENCE` : "";
+    ret.querySelector("span").textContent = nothing ? "NO TARGET" : `${r.name}${conf}`;
+    ret.classList.add(nothing ? "miss" : "locked");
+    if (!nothing && typeof sfx !== "undefined") sfx.lock();
   }
 
   function fillScan(r) {
@@ -770,6 +847,7 @@ const Holo = (() => {
     box.querySelector(".what").textContent = r.what || "";
     box.querySelector("dl").innerHTML = (r.details || []).map((d) => `<div><dt>${esc(d.label)}</dt><dd>${esc(d.value)}</dd></div>`).join("");
     box.querySelector(".tip").textContent = r.tip || "";
+    lockOn(r);
     beep(990, 0.08); setTimeout(() => beep(1320, 0.1), 90);
   }
 
@@ -1136,8 +1214,21 @@ const Holo = (() => {
   // ---------- from Jarvis (voice commands) ----------
   function handle(ev) {
     switch (ev.action) {
-      case "open": open(ev.kind, ev.subject, ev.parts, ev.image); break;
+      case "open":
+        if (ev.thrown && isMainScreen()) break;  // thrown from this PC: it's for the phone
+        open(ev.kind, ev.subject, ev.parts, ev.image, ev);
+        break;
       case "scan_result": fillScan(ev.result || {}); break;
+      case "wireframe": case "xray": case "solid": restyle(ev.action); break;
+      case "color": restyle("color", COLORS[(ev.target || "").toLowerCase()] || ev.target || "#3fc8ff"); break;
+      case "save": { const s = spec(); if (s && isMainScreen()) send({ type: "holo_save", name: ev.target || "", spec: s }); break; }
+      case "throw": {
+        const s = spec();
+        if (s && isMainScreen()) { send({ type: "holo_throw", spec: s }); close(1); }
+        break;
+      }
+      case "video": showVideo(ev.id, ev.title); break;
+      case "video_close": closeVideo(); break;
       case "close": close(); break;
       case "expand": expand(ev.target); break;
       case "collapse": collapse(); break;

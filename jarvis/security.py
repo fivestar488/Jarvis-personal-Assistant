@@ -47,8 +47,8 @@ def _watch():
                     last_alert = time.time()
                     photo = SNAPSHOT_DIR / f"motion_{dt.datetime.now():%Y%m%d_%H%M%S}.jpg"
                     cv2.imwrite(str(photo), frame)
-                    notify.alert("Security alert", f"Movement detected in front of your PC at {dt.datetime.now():%H:%M}.",
-                                 image_path=photo)
+                    notify.alert("Security alert", f"Movement detected in front of your PC at {dt.datetime.now():%H:%M}, sir.",
+                                 image_path=photo, level="critical")
             previous = gray
             time.sleep(0.3)
     finally:

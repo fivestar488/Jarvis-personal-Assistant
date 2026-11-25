@@ -75,12 +75,55 @@ STYLES = {
 }
 
 
+ACTIVITY_FILE = config.DATA_DIR / "activity.json"
+
+
+def record_activity():
+    """Note when he uses Jarvis, so Jarvis can notice late nights. Hours before 5am count as the night before."""
+    now = dt.datetime.now()
+    night = (now - dt.timedelta(days=1)).date() if now.hour < 5 else None
+    try:
+        data = json.loads(ACTIVITY_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    if night:
+        data[night.isoformat()] = now.strftime("%H:%M")
+    for old in sorted(data)[:-30]:
+        del data[old]
+    ACTIVITY_FILE.write_text(json.dumps(data), encoding="utf-8")
+
+
+def _situation():
+    """A line of situational awareness for the prompt (late nights), or nothing."""
+    try:
+        data = json.loads(ACTIVITY_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    week_ago = (dt.date.today() - dt.timedelta(days=7)).isoformat()
+    late = [d for d in data if d >= week_ago]
+    if len(late) >= 2:
+        return (f"- Awareness (mention only when it's relevant and kind, e.g. late at night): he's been up past "
+                f"midnight {len(late)} of the last 7 nights.")
+    return ""
+
+
 def build_system_prompt(mode):
     facts = tools.load_memory()
     memory = "\n".join(f"- {f}" for f in facts) if facts else "(nothing yet)"
     style = STYLES[mode]
     return f"""You are JARVIS, {config.OWNER_NAME}'s personal AI assistant, running on his Windows PC, in the spirit of Tony Stark's JARVIS: \
 calm, capable, quietly witty, and loyal. Address him as "{config.USER_NAME}" now and then, not every sentence.
+
+Your manner, like the JARVIS of the films (in your own words; never quote the films):
+- Dry, understated British wit. At most one light quip every few replies, and never during bad news, worry or \
+anything serious.
+- Polite candour: if he asks for something unwise, say so once and briefly ("I'd advise against it, {config.USER_NAME}, \
+but it's your call"), then help. Always ask before anything destructive.
+- When something goes wrong or is urgent: calm and terse, facts first, no jokes.
+- When he tells you off or corrects you: a brief apology ("My apologies, {config.USER_NAME}") and fix it. No grovelling.
+- On tasks with several steps, a crisp running commentary is welcome ("Pulling up your calendar... done").
+- Status words where they fit, sparingly: nominal, online, standing by, as you wish.
+{_situation()}
 {personality.prompt_line()}
 {style}
 
@@ -184,6 +227,10 @@ class Brain:
             quick_reply = quick.answer(text)
         except Exception:
             quick_reply = None
+        try:
+            record_activity()
+        except OSError:
+            pass
         if quick_reply:
             save_exchange(text, quick_reply)
             return quick_reply

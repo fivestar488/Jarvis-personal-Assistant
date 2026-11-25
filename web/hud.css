@@ -644,3 +644,87 @@ body.low-power .scanbar { display: none; }
 #meeting-badge { display: none; align-items: center; gap: 6px; font-family: var(--hud-font); font-size: 11px; letter-spacing: .2em; color: var(--red); }
 #meeting-badge i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 8px var(--red); animation: blink 1.2s infinite; }
 body.meeting #meeting-badge { display: inline-flex; }
+
+/* Alert levels in the comms log: note (quiet), caution (amber), warning (orange), critical (red) */
+.msg.alert.lvl-note { border-color: var(--cyan-dim); }
+.msg.alert.lvl-note .who { color: var(--cyan); }
+.msg.alert.lvl-warning { border-color: #ff7a1a; box-shadow: 0 0 14px rgba(255, 122, 26, .25); }
+.msg.alert.lvl-warning .who { color: #ff7a1a; }
+.msg.alert.lvl-critical { border-color: #ff2a1a; background: rgba(255, 42, 26, .12); box-shadow: 0 0 22px rgba(255, 42, 26, .4); }
+.msg.alert.lvl-critical .who { color: #ff2a1a; }
+body.red-alert::after {
+  content: ""; position: fixed; inset: 0; z-index: 85; pointer-events: none;
+  box-shadow: inset 0 0 120px 30px rgba(255, 30, 20, .55); animation: redAlert 1s ease-in-out infinite;
+}
+@keyframes redAlert { 50% { box-shadow: inset 0 0 60px 10px rgba(255, 30, 20, .2); } }
+
+/* System status on the reactor */
+.reactor { position: relative; }
+.reactor::after { content: ""; position: absolute; inset: 8%; border-radius: 50%; pointer-events: none; transition: box-shadow .6s; }
+body[data-vitals="caution"] .reactor::after { box-shadow: 0 0 50px 8px rgba(255, 176, 32, .35), inset 0 0 40px rgba(255, 176, 32, .25); }
+body[data-vitals="warning"] .reactor::after { box-shadow: 0 0 60px 12px rgba(255, 110, 20, .45), inset 0 0 50px rgba(255, 110, 20, .3); animation: vitalsPulse 2s infinite; }
+body[data-vitals="critical"] .reactor::after { box-shadow: 0 0 80px 18px rgba(255, 30, 20, .6), inset 0 0 60px rgba(255, 30, 20, .4); animation: vitalsPulse .9s infinite; }
+@keyframes vitalsPulse { 50% { opacity: .45; } }
+
+/* Progress readout (sweeps, protocols, indexing) */
+#progress {
+  position: fixed; top: 92px; left: 50%; transform: translateX(-50%); z-index: 60; width: min(420px, calc(100% - 32px));
+  padding: 12px 16px; background: rgba(var(--p-rgb), .88); border: 1px solid var(--cyan-dim); box-shadow: 0 0 24px rgba(var(--c-rgb), .18);
+  font-family: var(--hud-font); animation: msgIn .25s; transition: opacity .5s;
+}
+#progress.gone { opacity: 0; }
+#progress .pg-head { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .25em; color: var(--cyan-hi); }
+#progress .pg-head span { color: var(--amber); }
+#progress .pg-bar { height: 4px; margin: 8px 0 10px; background: rgba(var(--c-rgb), .12); }
+#progress .pg-bar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); transition: width .3s; }
+#progress[data-level="caution"] .pg-bar i, #progress[data-level="warning"] .pg-bar i { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
+#progress ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 10px; letter-spacing: .15em; color: var(--muted); }
+#progress li::before { content: "\25CB  "; }
+#progress li.done { color: var(--cyan); }
+#progress li.done::before { content: "\2713  "; }
+#progress li.now { color: var(--cyan-hi); }
+#progress li.now::before { content: "\25B8  "; }
+#progress li em { display: block; margin-left: 18px; font-family: var(--body-font); font-style: normal; font-size: 12px; letter-spacing: .02em; color: var(--text); }
+#progress p { margin: 8px 0 0; font-family: var(--body-font); font-size: 13px; color: var(--cyan-hi); }
+
+/* The daily cold start takes a little longer */
+#boot.long #boot-log { min-width: 360px; }
+
+/* Mood mode: everything a little dimmer */
+body.mood .hud, body.mood .topbar, body.mood .ticker, body.mood .console { filter: brightness(.78) saturate(.9); }
+
+/* Desk scanner: the photo keeps its own shape, so the target reticle sits on the right spot */
+.scan-photo { aspect-ratio: auto; }
+.scan-photo img { display: block; height: auto; }
+.reticle {
+  position: absolute; left: 20%; top: 15%; width: 60%; height: 70%; z-index: 3; pointer-events: none;
+  transition: left .5s cubic-bezier(.2, .9, .3, 1.2), top .5s cubic-bezier(.2, .9, .3, 1.2), width .5s, height .5s;
+  animation: reticleHunt 1.4s ease-in-out infinite alternate;
+}
+.reticle i { position: absolute; width: 18px; height: 18px; border: 2px solid var(--amber); filter: drop-shadow(0 0 4px var(--amber)); }
+.reticle i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; }
+.reticle i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; }
+.reticle i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; }
+.reticle i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+.reticle span {
+  position: absolute; left: 0; top: -22px; white-space: nowrap; font-family: var(--hud-font); font-size: 10px; letter-spacing: .15em;
+  color: var(--bg); background: var(--amber); padding: 2px 6px; opacity: 0; transition: opacity .3s .4s;
+}
+.reticle.locked, .reticle.miss { animation: none; }
+.reticle.locked i { border-color: var(--cyan-hi); filter: drop-shadow(0 0 6px var(--cyan)); }
+.reticle.locked span { opacity: 1; background: var(--cyan); }
+.reticle.miss span { opacity: 1; }
+@keyframes reticleHunt { from { transform: scale(1.06) translate(-2%, 1%); } to { transform: scale(.94) translate(2%, -1%); } }
+
+/* Video pane: a floating holographic screen */
+#holo-video {
+  position: fixed; right: 24px; bottom: 96px; z-index: 72; width: min(560px, calc(100% - 32px));
+  border: 1px solid var(--cyan); background: rgba(var(--p-rgb), .92); box-shadow: 0 0 30px rgba(var(--c-rgb), .35);
+  animation: holoIn .4s cubic-bezier(.2, .9, .3, 1.15);
+}
+#holo-video .hv-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; font-family: var(--hud-font); font-size: 10px; letter-spacing: .2em; color: var(--cyan-hi); text-transform: uppercase; }
+#holo-video .hv-head span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; }
+#holo-video button { font-family: var(--hud-font); font-size: 10px; letter-spacing: .2em; padding: 4px 10px; color: var(--cyan); background: transparent; border: 1px solid var(--cyan-dim); cursor: pointer; }
+#holo-video .hv-frame { position: relative; aspect-ratio: 16 / 9; }
+#holo-video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+@media (max-width: 700px) { #holo-video { right: 16px; bottom: 150px; } }

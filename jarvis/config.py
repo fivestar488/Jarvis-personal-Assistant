@@ -112,6 +112,20 @@ REDACT = (os.getenv("JARVIS_REDACT") or "on").strip().lower() != "off"
 DICTATE_HOTKEY = os.getenv("JARVIS_DICTATE_HOTKEY", "ctrl+alt+d").strip()
 # Live captions: what Jarvis says shown at the bottom of the screen, over every app (also "captions on/off")
 CAPTIONS = (os.getenv("JARVIS_CAPTIONS") or "off").strip().lower() == "on"
+# "Open House" protocol: the apps it opens, comma-separated
+OPEN_HOUSE = os.getenv("JARVIS_OPEN_HOUSE", "spotify, chrome")
+# Mood mode: a Spotify search to play when it starts (blank = no music)
+MOOD_MUSIC = os.getenv("JARVIS_MOOD_MUSIC", "")
+# "What was I doing?" journal: notes the window you're in once a minute, kept only on this PC. Off unless you say so.
+JOURNAL = (os.getenv("JARVIS_JOURNAL") or "off").strip().lower() == "on"
+# Ask my files: folders to search (comma-separated). Default: Documents and Desktop.
+FILE_FOLDERS = [p.strip() for p in (os.getenv("JARVIS_FILE_FOLDERS") or "~/Documents,~/Desktop").split(",") if p.strip()]
+# Clipboard history ("paste what I copied about the flights"): kept in memory only, never saved
+CLIPBOARD_HISTORY = (os.getenv("JARVIS_CLIPBOARD_HISTORY") or "on").strip().lower() != "off"
+# End-of-day wrap-up time (HH:MM, blank = off) and the Sunday weekly review
+DAY_WRAP = os.getenv("JARVIS_DAY_WRAP", "21:30").strip()
+# Perimeter alerts: failed Windows sign-ins and new devices on your home Wi-Fi
+PERIMETER = (os.getenv("JARVIS_PERIMETER") or "on").strip().lower() != "off"
 
 # Seconds Jarvis keeps listening for a follow-up after answering, without needing the wake word again.
 FOLLOW_UP_SECONDS = float(os.getenv("JARVIS_FOLLOW_UP_SECONDS", "6"))

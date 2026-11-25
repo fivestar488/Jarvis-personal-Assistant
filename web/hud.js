@@ -69,7 +69,37 @@ function duckSong() {
 }
 
 // ---------- boot sequence (also replayed by "Wake up, daddy's home") ----------
+// The first boot of each day is the full cold start, with real readings from the PC.
+async function cinematicBoot() {
+  store.set("jarvis-boot-day", new Date().toDateString());
+  const out = $("#boot-log");
+  out.textContent = "";
+  $("#boot").classList.remove("done");
+  $("#boot").classList.add("long");
+  let s = null;
+  try { s = await (await fetch(`/api/stats?key=${encodeURIComponent(KEY)}`)).json(); } catch {}
+  const pad = (a, b) => `${a} ${".".repeat(Math.max(3, 31 - a.length - b.length))} ${b}`;
+  const h = new Date().getHours(), part = h < 12 ? "MORNING" : h < 18 ? "AFTERNOON" : "EVENING";
+  const lines = [
+    "J.A.R.V.I.S. // COLD START", "",
+    pad("POWER CELLS", s ? (s.battery != null ? `${s.battery}%${s.charging ? " CHARGING" : ""}` : "MAINS") : "OK"),
+    pad("PROCESSORS", s ? `${Math.round(s.cpu)}% LOAD` : "OK"),
+    pad("MEMORY", s ? `${Math.round(s.ram)}% IN USE` : "OK"),
+    pad("STORAGE", s ? `${Math.round(s.disk)}% USED` : "OK"),
+    pad("NEURAL INTERFACE", "ONLINE"),
+    pad("VOICE SYNTHESIS", "ONLINE"),
+    pad("HOLO PROJECTOR", "READY"),
+    pad("SECURE UPLINK", navigator.onLine ? "ESTABLISHED" : "OFFLINE"),
+    pad("AI CORE", s?.spend?.model ? s.spend.model.replace("claude-", "").replace(/-(\d)-(\d)$/, " $1.$2").toUpperCase() : "ONLINE"),
+    "", `ALL SYSTEMS ONLINE. GOOD ${part}, SIR.`,
+  ];
+  sfx.boot();
+  lines.forEach((l, i) => setTimeout(() => { out.textContent += l + "\n"; if (l) sfx.tick(); }, 250 + i * 220));
+  setTimeout(() => { $("#boot").classList.add("done"); $("#boot").classList.remove("long"); }, 250 + lines.length * 220 + 900);
+}
+
 function boot(first = true) {
+  if (first && store.get("jarvis-boot-day") !== new Date().toDateString()) { cinematicBoot(); return; }
   const lines = [
     first ? "INITIALIZING J.A.R.V.I.S. ......... OK" : "WAKING J.A.R.V.I.S. ................ OK",
     "NEURAL INTERFACE ................... OK",
@@ -316,6 +346,79 @@ function blip(freq = 880, dur = 0.06, vol = 0.04) {
   o.start(); o.stop(actx.currentTime + dur);
 }
 
+// ---------- the HUD's sound language (synthesised here, nothing recorded) ----------
+function tone(freq, dur, { vol = 0.05, type = "sine", at = 0, glide = 0 } = {}) {
+  if (!actx || actx.state !== "running") return;
+  const t = actx.currentTime + at, o = actx.createOscillator(), g = actx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (glide) o.frequency.exponentialRampToValueAtTime(glide, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(actx.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function sweep(from, to, dur, vol = 0.035) {  // a filtered noise "whoosh" for scans
+  if (!actx || actx.state !== "running") return;
+  const n = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate), d = n.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain(), t = actx.currentTime;
+  src.buffer = n; f.type = "bandpass"; f.Q.value = 8;
+  f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(to, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(actx.destination); src.start(t);
+}
+const sfx = {
+  boot() { sweep(200, 4000, 1.1, 0.03); [330, 495, 660, 990].forEach((f, i) => tone(f, 0.18, { at: 0.25 + i * 0.12, vol: 0.04 })); },
+  ack() { tone(880, 0.06, { vol: 0.035 }); tone(1320, 0.08, { at: 0.07, vol: 0.035 }); },
+  tick() { tone(1500, 0.03, { vol: 0.02, type: "triangle" }); },
+  scan() { sweep(600, 3000, 0.9); },
+  lock() { tone(700, 0.05, { vol: 0.04, type: "square" }); tone(1400, 0.12, { at: 0.08, vol: 0.04 }); },
+  alert(level) {
+    if (level === "note") tone(988, 0.25, { vol: 0.035 });
+    else if (level === "caution") { tone(660, 0.14, { vol: 0.045 }); tone(880, 0.2, { at: 0.16, vol: 0.045 }); }
+    else if (level === "warning") [523, 659, 784].forEach((f, i) => tone(f, 0.16, { at: i * 0.15, vol: 0.05, type: "triangle" }));
+    else if (level === "critical") for (let i = 0; i < 3; i++) { tone(880, 0.22, { at: i * 0.5, vol: 0.06, type: "sawtooth", glide: 620 }); }
+    else blip(660, 0.08);
+  },
+};
+
+// System status on the reactor: amber for caution, orange for warning, red for critical. Fades back after a while.
+let vitalsTimer = null;
+function setVitals(level) {
+  document.body.dataset.vitals = level || "nominal";
+  clearTimeout(vitalsTimer);
+  if (level && level !== "nominal" && level !== "note") vitalsTimer = setTimeout(() => setVitals("nominal"), 10 * 60 * 1000);
+}
+
+// Progress readouts: named phases and a percentage for multi-step jobs (sweeps, protocols, indexing)
+function showProgress(ev) {
+  let box = document.getElementById("progress");
+  if (!box || box.dataset.id !== ev.id) {
+    box?.remove();
+    box = document.createElement("div");
+    box.id = "progress";
+    box.dataset.id = ev.id;
+    document.body.appendChild(box);
+  }
+  const pct = ev.pct || 0;
+  box.dataset.level = ev.level || "nominal";
+  box.innerHTML = `<div class="pg-head"><b>${esc(ev.title)}</b><span>${pct}%</span></div><div class="pg-bar"><i style="width:${pct}%"></i></div>
+    <ol>${ev.steps.map((s, i) => `<li class="${i < ev.current ? "done" : i === ev.current ? "now" : ""}">${esc(s)}${i === ev.current && ev.detail ? `<em>${esc(ev.detail)}</em>` : ""}</li>`).join("")}</ol>
+    ${ev.done && ev.detail ? `<p>${esc(ev.detail)}</p>` : ""}`;
+  if (ev.done) { sfx.ack(); setTimeout(() => { if (box.dataset.id === ev.id) box.classList.add("gone"); }, 4000); setTimeout(() => box.dataset.id === ev.id && box.remove(), 4600); }
+  else if (ev.current >= 0) sfx.tick();
+}
+
+// Mood mode: the blue JARVIS look and dimmer, then back to how it was
+let themeBeforeMood = null;
+function setMood(on) {
+  document.body.classList.toggle("mood", on);
+  if (on) { themeBeforeMood = document.documentElement.dataset.theme; applyTheme("jarvis"); }
+  else if (themeBeforeMood) { applyTheme(themeBeforeMood); themeBeforeMood = null; }
+}
+
 (function animate() {
   let target = 0;
   if (analyser && currentSrc) {
@@ -525,9 +628,14 @@ function handle(ev) {
     case "announce": {
       const alert = ev.type === "announce";
       addMsg(alert ? "alert" : "jarvis", ev.text);
+      if (alert) logEl.lastElementChild?.classList.add(`lvl-${ev.level || "caution"}`);
       if (ev.ack) addAckButton(ev.ack);
       if (!ev.streamed) showSubtitle(ev.text);
-      blip(alert ? 660 : 990, 0.08);
+      if (alert) {
+        sfx.alert(ev.level || "caution");
+        if (ev.level === "critical") { document.body.classList.add("red-alert"); setTimeout(() => document.body.classList.remove("red-alert"), 6000); }
+        if (ev.level && ev.level !== "note") setVitals(ev.level);
+      } else blip(990, 0.08);
       const mine = alert || ev.origin === myId;
       if (activeTab !== "comms") document.querySelector('.tabs [data-tab="comms"]').classList.add("ping");
       if (voiceOn && mine && ev.audio) { replyDone = true; queueSpeech(ev.audio, ev.text); }
@@ -568,6 +676,15 @@ function handle(ev) {
       break;
     case "confirm_done":
       if (confirmId === ev.id) hideConfirm();
+      break;
+    case "progress":  // a multi-step job's readout (sweep, protocol, indexing)
+      showProgress(ev);
+      break;
+    case "vitals":  // status report: tints the reactor
+      setVitals(ev.level);
+      break;
+    case "mood":
+      setMood(!!ev.on);
       break;
     case "meeting":  // "start meeting" / "end meeting"
       setMeeting(!!ev.on);

@@ -124,7 +124,7 @@ def check():
         done[key] = now.isoformat(timespec="seconds")
         STATE_FILE.write_text(json.dumps(dict(sorted(done.items(), key=lambda kv: kv[1])[-300:]), indent=1), encoding="utf-8")
         brief = write_brief(event, max(1, round((start - now).total_seconds() / 60)))
-        notify.alert("Meeting soon", brief)
+        notify.alert("Meeting soon", brief, level="note", phone=True)
         briefs.append(brief)
     return briefs
 

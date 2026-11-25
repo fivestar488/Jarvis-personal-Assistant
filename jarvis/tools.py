@@ -545,7 +545,7 @@ def check_reminders(now=None):
         if changed:
             _save_reminders(keep)
     for title, message, ack in alerts:
-        notify.alert(title, message, ack=ack)
+        notify.alert(title, message, ack=ack, level="warning" if ack else "caution")  # repeating ones are louder
     return alerts
 
 
@@ -654,8 +654,9 @@ def read_notes():
     return config.NOTES_FILE.read_text(encoding="utf-8") if config.NOTES_FILE.exists() else "No notes yet."
 
 
-from . import (credit, google_tools, hologram, meals, memory_tidy, minutes, modes, personality,  # noqa: E402,F401
-               routines, scanner, security, spend, spotify_tools, undo, watchers)  # (importing registers their tools)
+from . import (cliphistory, credit, desktop, filesearch, google_tools, hologram, journal, meals,  # noqa: E402,F401
+               memory_tidy, minutes, modes, perimeter, personality, protocols, routines, scanner, security, spend,
+               spotify_tools, undo, vitals, watchers, wrap)  # (importing them registers their tools)
 
 
 def _load_local_extensions():

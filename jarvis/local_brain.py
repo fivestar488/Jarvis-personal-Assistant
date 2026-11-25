@@ -26,6 +26,17 @@ TOOL_GROUPS = [
     (r"\bmeeting (mode|notes|minutes|summary)|(start|end|stop) (the |a )?meeting", ["meeting_mode"]),
     (r"\b(meal|calorie|calories|protein|lunch|dinner|breakfast|snack)\b", ["log_meal", "meals_today"]),
     (r"\bcredits?\b|how much .*cost|minimum .*(start|claude)", ["credit_estimate"]),
+    (r"status|damage report|diagnostic|sweep|how.*(systems|pc|computer) (doing|looking)", ["status_report"]),
+    (r"protocol", ["run_protocol"]),
+    (r"mood|movie mode|lights (down|up)", ["mood_mode"]),
+    (r"\b(left|right|maximi[sz]e|snap|side by side|arrange)\b.*\b(window|chrome|spotify|word|app)", ["tile_windows"]),
+    (r"perimeter|intruder|sign.?in attempt|wrong password|new device", ["perimeter_report"]),
+    (r"my (files|documents|pdf|notes)|which file|in my lease|index", ["ask_my_files", "index_my_files"]),
+    (r"journal|what was i (doing|working)|what did i (do|work)", ["activity_journal"]),
+    (r"wrap.?up|end of (the )?day|weekly review|how was my (day|week)", ["wrap_up"]),
+    (r"i copied|clipboard history|copied earlier", ["clipboard_history"]),
+    (r"trailer|video", ["show_video"]),
+    (r"workspace", ["hologram_workspace"]),
     (r"low power|battery|power sav", ["set_low_power"]),
     (r"\b(listening|microphone|mic)\b", ["set_listening_paused"]),
     (r"captions?|subtitles?", ["set_captions"]),
@@ -65,7 +76,9 @@ SAY_RESULT = {"set_reminder", "cancel_reminder", "acknowledge_reminder", "open_a
               "type_text", "system_power", "start_security_mode", "stop_security_mode", "show_hologram",
               "hologram_control", "scan_desk", "desk_scanner_mode", "undo_last", "block_time",
               "set_low_power", "set_listening_paused", "set_captions", "meeting_mode", "log_meal",
-              "meals_today", "credit_estimate"}
+              "meals_today", "credit_estimate", "status_report", "run_protocol", "mood_mode", "tile_windows",
+              "perimeter_report", "ask_my_files", "index_my_files", "activity_journal", "wrap_up", "clipboard_history",
+              "show_video", "hologram_workspace"}
 MAX_TOOLS = 3           # every tool description costs a laptop CPU seconds to read
 MEMORY_FACTS = 8
 # Earlier exchanges sent back each time. Trimmed in one go (down to KEEP) rather than one by one: Ollama
@@ -182,7 +195,8 @@ def keep_loaded():
 def _system():
     facts = tools.load_memory()[-MEMORY_FACTS:]
     memory = "\n".join(f"- {f}" for f in facts) or "(nothing yet)"
-    return (f"You are JARVIS, {config.OWNER_NAME}'s personal assistant: calm, capable, quietly witty. "
+    return (f"You are JARVIS, {config.OWNER_NAME}'s personal assistant: calm, capable, quietly witty (dry British wit, "
+            "sparingly; calm and brief when something goes wrong; a short apology when corrected). "
             f"Call him \"{config.USER_NAME}\" now and then. {personality.prompt_line()}\n"
             "Your replies are read aloud: answer in one to three short plain sentences, no markdown, no lists. "
             "When a tool can do what he asks, call it. Tool results are real, live data: answer from them. "

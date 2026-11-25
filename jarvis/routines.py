@@ -66,10 +66,16 @@ def run_routine(name):
         if len(close) != 1:
             return f"No routine called \"{name}\". Saved routines: {', '.join(routines) or 'none'}."
         key = close[0]
-    results = []
-    for s in routines[key]["steps"]:
+    from .vitals import Progress
+    steps = routines[key]["steps"]
+    progress = Progress(f"{key.upper()} PROTOCOL", [s["tool"].replace("_", " ").title() for s in steps])
+    results, failed = [], 0
+    for i, s in enumerate(steps):
         content, is_error = tools.run(s["tool"], s["args"])
+        failed += bool(is_error)
         results.append(f"{s['tool'].replace('_', ' ')}: {'failed - ' if is_error else ''}{_summary(content)[:150]}")
+        progress.step(i, _summary(content)[:80], "caution" if is_error else "nominal")
+    progress.done("Complete." if not failed else f"{failed} step(s) failed.", "caution" if failed else "nominal")
     return f"Ran \"{key}\". " + " | ".join(results)
 
 

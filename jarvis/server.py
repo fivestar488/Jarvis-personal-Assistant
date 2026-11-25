@@ -18,8 +18,9 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (briefing, captions, config, email_watch, feeds, google_tools, hologram, meetings, memory_tidy, minutes,
-               network, notify, security, spend, suggestions, telegram_bot, tools, undo, watchers)
+from . import (briefing, captions, cliphistory, config, email_watch, feeds, filesearch, google_tools, hologram, journal,
+               meetings, memory_tidy, minutes, network, notify, perimeter, security, spend, suggestions, telegram_bot,
+               tools, undo, vitals, watchers, wrap)
 from .brain import Brain
 from .voice import SentenceSplitter, synthesize, transcribe_pcm, warm_whisper
 
@@ -41,6 +42,11 @@ async def lifespan(_app):
     memory_tidy.start()
     suggestions.deliver, suggestions.on_done = show_suggestion, suggestion_done
     suggestions.start()
+    for job in (vitals, perimeter, filesearch, journal, wrap, cliphistory):  # each watches or tidies in the background
+        try:
+            job.start()
+        except Exception as e:
+            print(f"  Couldn't start {job.__name__.rsplit('.', 1)[-1]}: {e}")
     telegram_bot.start(on_message=telegram_message, on_answer=answer_confirm, on_suggestion=suggestions.answer)
     watcher = asyncio.create_task(watch_network())
     yield
@@ -169,12 +175,13 @@ class HudInterface:
             from_thread(broadcast({"type": "confirm_done", "id": cid}))
             telegram_bot.confirm_done(cid)
 
-    def announce(self, text, ack=None):
+    def announce(self, text, ack=None, level="caution"):
         async def send():
             if not clients:
                 held_announcements.append(text)  # delivered when a screen next connects
                 return
-            await broadcast({"type": "announce", "text": text, "audio": await voice_for(text), "ack": ack})
+            await broadcast({"type": "announce", "text": text, "audio": await voice_for(text), "ack": ack,
+                             "level": level})
         from_thread(send())
 
     def hud(self, event):
@@ -395,6 +402,22 @@ async def holo_expand(key: str, request: Request):
         raise HTTPException(503, f"Couldn't work that out: {e}")
 
 
+@app.post("/api/claude-code")
+async def claude_code_alert(key: str, request: Request):
+    """Claude Code (the coding assistant) is waiting for you: its Notification hook posts here and Jarvis says so.
+    See tools/claude_code_notify.py."""
+    check_key(key)
+    try:
+        event = await request.json()
+    except Exception:
+        event = {}
+    message = " ".join(str(event.get("message") or "Claude Code needs your attention.").split())[:200]
+    project = str(event.get("cwd") or "").replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    text = f"Sir, Claude Code{' in ' + project if project else ''} needs you: {message}"
+    notify.alert("Claude Code", text, level="note", phone=True)
+    return {"ok": True}
+
+
 @app.get("/api/holo/panel")
 async def holo_panel(key: str, name: str):
     check_key(key)
@@ -470,6 +493,18 @@ async def websocket(ws: WebSocket, key: str = ""):
             elif event.get("type") == "ack_reminder":  # "Got it" on a repeating reminder
                 result = await asyncio.to_thread(tools.acknowledge_reminder, str(event.get("id", "")))
                 await ws.send_json({"type": "status", "text": result})
+            elif event.get("type") == "holo_save":  # "save this hologram": what the screen was showing
+                await asyncio.to_thread(hologram.save_spec, event.get("name"), event.get("spec") or {})
+            elif event.get("type") == "holo_throw":  # "throw it to my phone": the other screens open it
+                spec = event.get("spec") or {}
+                for cid, other in list(clients.items()):
+                    if cid != client_id:
+                        try:
+                            await other.send_json({"type": "holo", "action": "open", "thrown": True, **spec})
+                        except Exception:
+                            pass
+                threading.Thread(target=notify.push, args=("Hologram", f"{spec.get('subject', 'A hologram')} is on your phone, sir."),
+                                 daemon=True).start()
             elif event.get("type") == "meeting_text":  # meeting mode: a line the HUD heard
                 minutes.add(str(event.get("text", ""))[:2000])
             elif event.get("type") == "undo":  # the UNDO button in the activity log

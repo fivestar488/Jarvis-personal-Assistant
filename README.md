@@ -189,6 +189,43 @@ Point a webcam down at a mat or your desk (a cheap USB webcam on a clip or stand
 - Jarvis uses a second webcam automatically if one is plugged in, otherwise the laptop's own. To choose one, set `JARVIS_DESK_CAMERA` in `.env`.
 - Seeing uses Claude. In free offline mode it uses a small vision model instead: `ollama pull moondream` (about 1.7 GB). That's slower and less detailed, but free.
 
+## Like the films
+
+- **His manner:**
+  - dry British wit, used sparingly;
+  - polite pushback when something's unwise ("I'd advise against it, sir");
+  - calm and brief when something goes wrong;
+  - a short apology when corrected;
+  - running commentary on multi-step tasks;
+  - he notices a run of late nights.
+- **Status report / damage report:** power and time left, processors, memory, storage, internet, AI core, budget, comms and security, each rated nominal, caution, warning or critical. The arc reactor glows amber or red to match. **"Run a sweep"** shows the same as a phase-by-phase diagnostic with a progress readout.
+- **Alerts that escalate:** note, caution, warning and critical, each with its own colour and sound, and a red-alert flash for critical. Battery, internet, storage and CPU are watched in the background, with the odds: "Power is running low, sir: 12 percent on battery, about 25 minutes left."
+- **Protocols:**
+  - "Initiate Open House protocol" opens your usual apps, set with `JARVIS_OPEN_HOUSE`.
+  - "Initiate Clean Slate protocol" minimises everything, clears the clipboard and locks the PC, after asking you, with a countdown.
+  - Any saved routine works too: "initiate focus protocol".
+- **The sound of the HUD:** original synthesised sounds for boot, acknowledge, scans, lock-on and each alert level. The first time you open the HUD each day, it runs a full cold-start sequence with real readings from your PC.
+- **Target lock:** desk scans draw a reticle around the object, with its name and Jarvis's confidence.
+- **The workshop:**
+  - on a hologram: "wireframe", "x-ray", "colour it red", "normal view";
+  - "save this hologram" keeps it in your workspace, and "show me a hologram of" plus its name brings it back exactly as it was;
+  - "throw it to my phone".
+- **Perimeter:**
+  - failed Windows sign-ins (three in 10 minutes and Jarvis snaps a webcam photo for your phone);
+  - new devices on your home Wi-Fi, after 2 days of learning what's normal;
+  - "perimeter report".
+- **Mood mode:** "mood mode" or "lights down" switches Windows to dark mode, dims the screen, turns the HUD blue and optionally plays music (`JARVIS_MOOD_MUSIC`). "Lights up" puts it all back.
+- **Windows by voice:** "put Chrome on the left and Spotify on the right", "maximise Word".
+
+## Even more features
+
+- **Ask my files:** "what does my lease say about pets?". Jarvis keeps a private search index of your Documents and Desktop (text, notes, code, PDFs, Word files) on your PC. Only the few best passages go to the AI. Files stored only in OneDrive's cloud are skipped. "Index my files" refreshes it.
+- **"What was I doing?":** an opt-in journal ("start my journal"). Once a minute it notes the app and window title you're in, on your PC only. "What was I working on Tuesday afternoon?" turns it into a summary.
+- **Clipboard history:** "paste what I copied about the flights", "what did I copy?". Kept in memory only, and anything with a secret in it is never kept.
+- **End-of-day wrap-up and weekly review:** every evening at 21:30, and on Sundays for the whole week: meetings, notes, meals, spend, reminders and tomorrow's first event. "Wrap up my day" or "weekly review" any time.
+- **Video pane:** "play the trailer for ..." or "show me a video about ..." plays in a floating pane on the HUD.
+- **Claude Code alerts:** if you use Claude Code, Jarvis can tell you out loud (and on your phone) when it's waiting for you. Add a Notification hook to `~/.claude/settings.json` that runs `python "<your Jarvis folder>/tools/claude_code_notify.py"`. The script explains how.
+
 ## More everyday features
 
 - **Dictate anywhere:** press **Ctrl+Alt+D** in any app (email, Word, chat), speak, then press it again. What you said is typed where your cursor is, tidied up. A high beep means it's listening, a low one that it stopped. The speech is turned into text on your PC.

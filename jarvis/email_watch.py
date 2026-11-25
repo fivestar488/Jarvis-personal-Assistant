@@ -83,7 +83,7 @@ def check():
 
     from . import notify
     for e in important:
-        notify.alert("Important email", e["summary"])
+        notify.alert("Important email", e["summary"], level="note", phone=True)
     return important
 
 

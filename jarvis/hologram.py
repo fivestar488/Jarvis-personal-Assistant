@@ -62,7 +62,38 @@ def _send(event):
     return tools.ui.hud({"type": "holo", **event})
 
 
+WORKSPACE_FILE = config.DATA_DIR / "holo-workspace.json"
+
+
+def _workspace():
+    try:
+        return json.loads(WORKSPACE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_spec(name, spec):
+    """A hologram saved to the workspace (the HUD sends what it's showing, including expanded parts)."""
+    name = " ".join(str(name or spec.get("subject") or "hologram").lower().split())[:60]
+    ws = _workspace()
+    ws[name] = spec
+    WORKSPACE_FILE.write_text(json.dumps(ws, ensure_ascii=False)[:2_000_000], encoding="utf-8")
+    return name
+
+
+def workspace_list():
+    names = list(_workspace())
+    if not names:
+        return "Your hologram workspace is empty, sir. Say 'save this hologram' while one is open."
+    return ("In your workspace: " + ", ".join(names) + ". Say 'show me a hologram of' and the name to bring one back.")
+
+
 def open_hologram(subject, parts=None):
+    saved = _workspace().get(" ".join(subject.lower().split()).removeprefix("the ").removeprefix("my "))
+    if saved:  # from the workspace, exactly as it was saved
+        if not _send({"action": "open", **saved}):
+            return "Holograms need the HUD. Start Jarvis with jarvis.bat and try again."
+        return f"Restored {saved.get('subject', subject)} from your workspace, sir."
     kind, name = classify(subject)
     event = {"action": "open", "kind": kind, "subject": name}
     if kind == "topic" and parts:
@@ -81,6 +112,9 @@ def control(action, target=""):
         return "Holograms need the HUD. Start Jarvis with jarvis.bat and try again."
     return {"close": "Hologram closed.", "expand": "Expanding.", "collapse": "Putting it back together.",
             "zoom_in": "Zooming in.", "zoom_out": "Zooming out.", "rotate": "Rotating.", "reset": "View reset.",
+            "wireframe": "Wireframe view.", "xray": "X-ray view.", "solid": "Back to the normal view.",
+            "color": f"Recoloured{' ' + target if target else ''}, sir.", "save": "Saved to your workspace, sir.",
+            "throw": "Sent to your phone, sir.",
             "gestures_on": "Hand control is on. The camera light will stay on while it's running.",
             "gestures_off": "Hand control is off."}.get(action, "Done.")
 
@@ -99,13 +133,47 @@ def show_hologram(subject, parts=None):
 
 
 @tool("Change the hologram on the HUD: close it, expand (a named part, or the selected one), collapse it, zoom, "
-      "rotate, reset the view, or turn webcam hand control on/off.",
+      "rotate, reset the view, wireframe / x-ray / solid view, recolour it (target = a colour), save it to his "
+      "workspace (target = a name), throw it to his phone, or turn webcam hand control on/off.",
       {"action": {"type": "string", "enum": ["close", "expand", "collapse", "zoom_in", "zoom_out", "rotate", "reset",
+                                             "wireframe", "xray", "solid", "color", "save", "throw",
                                              "gestures_on", "gestures_off"]},
-       "target": S("For expand: the part's name, if he named one")},
+       "target": S("For expand: the part's name. For color: the colour. For save: a name for it.")},
       ["action"])
 def hologram_control(action, target=""):
     return control(action, target)
+
+
+@tool("List the holograms saved in his workspace.")
+def hologram_workspace():
+    return workspace_list()
+
+
+def find_video(query):
+    """The top YouTube result's video id for a search, or None."""
+    import urllib.parse
+    req = urllib.request.Request("https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(query),
+                                 headers={"User-Agent": "Mozilla/5.0"})
+    html = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", "ignore")
+    ids = re.findall(r'"videoId":"([\w-]{11})"', html)
+    return ids[0] if ids else None
+
+
+@tool("Play a video in a floating pane on the HUD (the top YouTube result), e.g. 'play the trailer for X', "
+      "'show me a video of how a jet engine works'. close=true closes the pane.",
+      {"query": S("What to search YouTube for"), "close": {"type": "boolean"}})
+def show_video(query="", close=False):
+    if close:
+        return "Video closed." if _send({"action": "video_close"}) else "There's no HUD open."
+    try:
+        vid = find_video(query)
+    except Exception:
+        vid = None
+    if not vid:
+        return f"I couldn't find a video for {query}, sir."
+    if not _send({"action": "video", "id": vid, "title": query}):
+        return "The video pane needs the HUD open. Start Jarvis with jarvis.bat."
+    return f"On screen, sir: {query}."
 
 
 # ---------- the parts of a topic, for the "expand" step ----------

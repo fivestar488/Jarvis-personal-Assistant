@@ -32,3 +32,4 @@ SpeechRecognition
 PyAudio
 faster-whisper
 numpy
+pypdf>=5,<7

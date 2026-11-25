@@ -177,7 +177,7 @@ def run_due():
                 w["errors"] = w.get("errors", 0) + 1
                 message = f"I can't check it any more ({type(e).__name__}). I'll keep trying." if w["errors"] == 5 else None
             if message:
-                notify.alert("Watcher", f"{w['name']}: {message}")
+                notify.alert("Watcher", f"{w['name']}: {message}", level="note", phone=True)
                 sent.append(f"{w['name']}: {message}")
         _save(watchers)
     return sent

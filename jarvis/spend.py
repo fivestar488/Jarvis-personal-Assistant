@@ -91,12 +91,13 @@ def _warn(level, total):
     from . import notify
     budget = config.DAILY_BUDGET
     if level == 1:
-        notify.alert("API budget", f"Heads up, {config.USER_NAME}: I've used ${total:.2f} of today's ${budget:.2f} API budget.")
+        notify.alert("API budget", f"Heads up, {config.USER_NAME}: I've used ${total:.2f} of today's ${budget:.2f} API budget.",
+                     level="caution")
     else:
         plan = "pause the email watch" if config.MODEL == config.HELPER_MODEL else \
             "switch to my cheapest model and pause the email watch"
         notify.alert("API budget", f"Today's ${budget:.2f} API budget is used up. I'll {plan} until midnight, "
-                                   "but I'll still answer you.")
+                                   "but I'll still answer you.", level="warning")
 
 
 def today():

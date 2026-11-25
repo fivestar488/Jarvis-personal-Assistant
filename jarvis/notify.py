@@ -18,15 +18,23 @@ _lock = threading.Lock()
 public_base_url = None
 
 
-def alert(title, message, image_path=None, speak=True, ack=None):
+LEVELS = ("note", "caution", "warning", "critical")  # each has its own colour and sound in the HUD
+
+
+def alert(title, message, image_path=None, speak=True, ack=None, level="caution", phone=True):
     """Tell the user something everywhere: announced in the HUD / voice, and pushed to their phone.
-    ack: the id of a repeating reminder, so the HUD and Telegram show a "Got it" button that stops it."""
+    ack: the id of a repeating reminder, so the HUD and Telegram show a "Got it" button that stops it.
+    level: note (just mentioned), caution, warning or critical (loudest, and repeats its sound in the HUD).
+    A note isn't sent to the phone unless phone=True is forced."""
     from . import tools
+    level = level if level in LEVELS else "caution"
     if speak and tools.ui:
         try:
-            tools.ui.announce(message, ack=ack)
-        except TypeError:  # the terminal interface has no buttons
+            tools.ui.announce(message, ack=ack, level=level)
+        except TypeError:  # the terminal interface has no buttons or levels
             tools.ui.announce(message)
+    if not phone or level == "note":
+        return
     image_url = None
     if image_path and public_base_url:
         from .server import access_key
