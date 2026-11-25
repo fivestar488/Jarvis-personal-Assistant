@@ -1,0 +1,71 @@
+# Privacy Policy for J.A.R.V.I.S.
+
+*Effective 25 November 2026*
+
+J.A.R.V.I.S. ("Jarvis") is a personal assistant app that you run on your own Windows PC. It is open source: all of its code is public in this repository, so you can check everything this policy says.
+
+Jarvis has no company, servers or accounts of its own behind it. **Nobody but you receives your data from Jarvis.** The developer never sees it. The only exceptions are the third-party services listed below, which Jarvis uses to do what you ask.
+
+## Google user data (Gmail and Google Calendar)
+
+When you connect your Google account, Jarvis asks for these permissions:
+
+| Permission | What Jarvis uses it for |
+|---|---|
+| Gmail (`gmail.modify`) | Search and read your emails when you ask; save drafts; send an email **only after you approve it** in a pop-up; mark emails as read; tell you about important new emails |
+| Google Calendar (`calendar`) | Read your events for your agenda and briefings; add events or time blocks you ask for; delete an event **only after you approve it** |
+
+How Jarvis handles this data:
+
+- **It is processed on your PC.** Your Google sign-in token is stored only in the `data` folder on your own computer. It never goes to the developer or anywhere else.
+- **To answer your requests,** the parts of an email or event that a request needs are sent to the AI model you've chosen:
+  - Anthropic's Claude API (the default), under [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy) and commercial terms;
+  - or a model running entirely on your own PC (the optional offline mode through Ollama), in which case nothing leaves your computer.
+- **Secrets are hidden first.** Card numbers, passwords, API keys and similar secrets found in emails are blanked out before anything is sent to the AI.
+- **No selling, advertising or sharing.** Your Google data is never sold, never used for advertising, never used to train AI models by Jarvis, and never shared with anyone except as described above.
+- **No humans read it.** No person reads your Google data, unless you read it yourself.
+
+Jarvis's use and transfer of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
+
+## Other data Jarvis handles
+
+- **Your voice:**
+  - If your browser's built-in speech recognition is used (for example, Microsoft Edge), your voice commands go to that browser maker's speech service.
+  - Otherwise, speech is turned into text on your PC with Whisper.
+  - Dictation (Ctrl+Alt+D) always runs on your PC.
+- **Jarvis's spoken replies:** the text of each reply is sent to Microsoft's Edge text-to-speech service to create the voice.
+- **Camera:** only used when you ask:
+  - "look through the camera", "scan this", "log this meal";
+  - security mode;
+  - hand-gesture control.
+
+  Hand tracking runs inside your browser, and the video never leaves your PC. Photos for a scan or a question are sent to the AI model, as above.
+- **Screen:** a screenshot is taken only when you ask about your screen, and is sent to the AI model to answer.
+- **Memory, notes, reminders, meal log, meeting notes and conversation history:** saved only in the `data` folder on your PC.
+- **Optional services:** only if you set them up yourself:
+  - Spotify, to control your music;
+  - Telegram, as your private bot;
+  - weather from Open-Meteo, plus a rough location from your internet address;
+  - news feeds.
+
+  Each receives only what it needs for its feature.
+
+## Keeping and deleting your data
+
+Everything Jarvis stores is in the `data` folder on your PC, and you can delete it at any time.
+
+To disconnect Google completely:
+1. Remove Jarvis at [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+2. Delete `data/google_token.json`.
+
+## Children
+
+Jarvis is not meant for children under 13.
+
+## Changes
+
+If this policy changes, the new version will be published here with a new effective date. The full history of changes is in this repository's commit log.
+
+## Contact
+
+Questions about this policy: open an issue at [github.com/fivestar488/Jarvis-personal-Assistant/issues](https://github.com/fivestar488/Jarvis-personal-Assistant/issues).
