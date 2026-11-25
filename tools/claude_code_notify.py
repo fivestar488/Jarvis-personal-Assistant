@@ -18,8 +18,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def main():
-    try:
-        event = json.load(sys.stdin)
+    try:  # read as UTF-8 bytes: Windows' default console encoding would garble non-English folder names
+        event = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
     except Exception:
         event = {}
     try:
