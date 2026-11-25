@@ -4,6 +4,9 @@
 
 An Iron Man-style AI assistant for Windows, powered by Claude. You talk to it, give it commands, and it does the work on your PC: it opens apps, reads your screen, runs your Gmail and Calendar, plays Spotify, watches prices and pages, and reaches your phone through an installable app and Telegram.
 
+<p align="center"><img src="docs/hologram-demo.gif" alt="Holograms controlled by hand: a 3D jet engine is turned with a pinch and pulled apart into labelled parts with a clap, then a 3D map of how rockets work bursts into its parts" width="720"></p>
+<p align="center"><sub>Holograms you control with your hands: pinch and drag to turn, clap to pull apart (scripted demo; see <a href="#holograms-and-hand-control">Holograms and hand control</a>)</sub></p>
+
 ![The J.A.R.V.I.S. HUD: arc reactor, system diagnostics, weather radar, agenda and a live news ticker (demo data)](docs/hud.jpg)
 
 It's built on the same pipeline as the best Jarvis projects on GitHub: **wake word → speech-to-text → Claude with tools → neural voice**.
