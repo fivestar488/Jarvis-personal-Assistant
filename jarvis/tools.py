@@ -595,8 +595,8 @@ def read_notes():
     return config.NOTES_FILE.read_text(encoding="utf-8") if config.NOTES_FILE.exists() else "No notes yet."
 
 
-from . import (google_tools, memory_tidy, personality, routines, security, spend,  # noqa: E402,F401
-               spotify_tools, watchers)  # (importing them registers their tools)
+from . import (google_tools, hologram, memory_tidy, personality, routines, scanner, security,  # noqa: E402,F401
+               spend, spotify_tools, watchers)  # (importing them registers their tools)
 
 
 def _load_local_extensions():

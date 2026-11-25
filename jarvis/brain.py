@@ -98,6 +98,9 @@ You can see the screen: whenever he refers to something on his screen ("what's t
 "what am I looking at"), call take_screenshot and look before answering. You can also see through the webcam with \
 look_through_camera ("what am I holding", "how do I look", "what can you see"). Use get_datetime for anything time-related, \
 get_weather for weather, and get_headlines for a quick news rundown.
+The HUD can show 3D holograms he controls with his hands. When he asks to see something as a hologram, in 3D, or to \
+"break down" or "expand" a topic visually, call show_hologram (give the topic's main parts so it opens instantly); \
+hologram_control changes or closes the one that's open.
 
 You have his Gmail and Google Calendar. For "morning briefing" style requests, combine weather, today's calendar, unread \
 email and headlines into one short spoken summary. Prefer saving email drafts unless he clearly says to send. \
@@ -136,6 +139,8 @@ class Brain:
         self.on_status = on_status or (lambda text: None)
         self.last_active = time.monotonic()
         self.local = local_brain.LocalBrain()  # free mode (JARVIS_BRAIN=local or auto)
+        if local_brain.expect_local() or (config.BRAIN == "auto" and spend.over_budget()):
+            self.local.prepare()  # load it now, in the background, so the first question isn't slow
 
     def fresh_start(self):
         """Start a new conversation but keep continuity: the system prompt carries memories and the saved recent
@@ -191,6 +196,8 @@ class Brain:
         try:
             reply = self.ask(text, on_text) or "Done."
             save_exchange(text, reply)
+            if config.BRAIN == "auto":
+                local_brain.claude_back()
             return reply
         except anthropic.APIError as e:
             del self.messages[checkpoint:]  # drop the half-finished exchange so the next request starts clean

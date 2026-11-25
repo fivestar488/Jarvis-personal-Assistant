@@ -1,7 +1,8 @@
 """Free, instant answers: simple requests answered in plain Python before Claude is called (no API cost, no wait).
 The time and date, "how many days until Christmas", percentages and sums, unit conversions, timers, reminders
-("remind me to call mum in 20 minutes / at 5 pm"), volume and pause/skip, "open <app>", the weather,
-"got it" for a repeating reminder, and saved routines by name. The patterns are strict on purpose: anything that
+("remind me to call mum in 20 minutes / at 5 pm"), volume and pause/skip, "open <app>", the weather, the news,
+"what's playing", "what are my reminders", "read my notes", "got it" for a repeating reminder, and saved routines
+by name. The patterns are strict on purpose: anything that
 doesn't match exactly ("what time is it in Tokyo") goes to Claude as usual."""
 import ast
 import datetime as dt
@@ -127,6 +128,10 @@ def answer(text):
             return tools.acknowledge_reminder()
         return None
 
+    reply = _scanner(t) or _hologram(t)
+    if reply:
+        return reply
+
     if re.fullmatch(r"(whats the time|what time is it|what is the time|the time|time)( now| right now)?", t):
         return f"It's {now:%I:%M %p}.".replace(" 0", " ")
     if re.fullmatch(r"(whats|what is) (the date|todays date|the date today)|what day is (it|it today|today)|whats today", t):
@@ -223,7 +228,105 @@ def answer(text):
     if re.fullmatch(r"(whats|what is|hows|how is) the weather( like)?( today| now| outside| right now)?|weather|"
                     r"weather (today|now)|is it (cold|hot|raining|warm) (outside|today)", t):
         return _weather()
+
+    if re.fullmatch(r"(whats|what is) (playing|this song|this track|the song)( called)?|what song is (this|playing)", t):
+        playing = tools.TOOLS["spotify_now_playing"]["fn"]() if "spotify_now_playing" in tools.TOOLS else ""
+        if " by " in playing:  # "Song by Artist (playing, 1:23 of 3:45)."
+            return "That's " + re.sub(r"\s*\(.*\)\.?$", ".", playing)
+    if re.fullmatch(r"(what are|whats|list|read|tell me) (my|all my|the) reminders|(do i have )?any reminders|my reminders", t):
+        return _reminders(now)
+    if re.fullmatch(r"(whats|what is) (the|in the) news( today)?|(the |todays )?(news|headlines)|"
+                    r"(read|tell) me the (news|headlines)|(what are )?(the |todays )?top (stories|headlines)", t):
+        from . import feeds
+        titles = [h["title"] for h in feeds.headlines(3)]
+        return ("Here are the top headlines. " + " ".join(f"{h.rstrip('.')}." for h in titles)) if titles else None
+    if re.fullmatch(r"(read|show|tell me|what are|whats in) (me )?my notes|my notes", t):
+        lines = [re.sub(r"^- \[[^\]]*\]\s*", "", l).strip() for l in tools.read_notes().splitlines()]
+        lines = [l for l in lines if l and l != "No notes yet."]
+        if not lines:
+            return "You haven't saved any notes yet."
+        more = f" Those are the latest 5 of {len(lines)}." if len(lines) > 5 else ""
+        return "Your notes: " + " ".join(f"{l[:1].upper()}{l[1:].rstrip('.')}." for l in lines[-5:]) + more
     return None
+
+
+SURFACE = r"(?:the|my) (?:mat|desk|table|workbench|bench)"
+
+
+def _scanner(t):
+    """The desk scanner: 'scan this', 'what's on the mat?', 'start the scanner'..."""
+    from . import scanner
+    if re.fullmatch(rf"scan(?: this| that| it)?(?: (?:on|from) {SURFACE})?(?: for me)?|scan {SURFACE}|"
+                    rf"(?:whats|what is) (?:this |that )?on {SURFACE}|"
+                    rf"(?:what is|whats|identify|analy[sz]e) (?:this|that) (?:on|from) {SURFACE}", t):
+        return scanner.scan()
+    if re.fullmatch(r"(?:start|turn on|enable|activate)(?: the)? (?:desk )?scanner(?: mode)?|"
+                    r"(?:desk )?scanner(?: mode)? on|workbench mode(?: on)?", t):
+        return scanner.start_watching()
+    if re.fullmatch(r"(?:stop|turn off|disable|deactivate)(?: the)? (?:desk )?scanner(?: mode)?|"
+                    r"(?:desk )?scanner(?: mode)? off|workbench mode off", t):
+        return scanner.stop_watching()
+    return None
+
+
+HOLO = r"(?:hologram|holo|3d model|3d view|3d map|3d breakdown)"
+
+
+def _hologram(t):
+    """'Show me a hologram of a jet engine', 'expand the weather', 'close the hologram', 'expand the turbine'..."""
+    from . import hologram
+    m = (re.fullmatch(rf"(?:show|open|bring up|display|pull up|give|make|build)(?: me| us)? (?:a |an |the )?{HOLO}"
+                      rf"(?: of| for| on)? (.+)", t)
+         or re.fullmatch(rf"(?:show|open|bring up|display|pull up)(?: me)? (.+?) (?:as a |in a |in )?(?:{HOLO}|3d)", t)
+         or re.fullmatch(r"(?:expand|blow up|enlarge) (?:the |my )?(weather|news|agenda|calendar|system|"
+                         r"spotify|music|reminders)(?: panel)?", t))
+    if m and m.group(1) not in ("it", "that", "this", "the", "a", "an"):
+        return hologram.open_hologram(m.group(1))
+    if re.fullmatch(rf"(?:close|hide|dismiss|clear|remove|get rid of|lose) (?:the |that |this )?{HOLO}s?", t):
+        return hologram.control("close")
+    if re.fullmatch(r"(?:turn on|enable|start|activate) (?:the )?(?:hand|gesture)s? (?:control|tracking|mode)|"
+                    r"(?:hand|gesture) (?:control|tracking|mode) on", t):
+        return hologram.control("gestures_on")
+    if re.fullmatch(r"(?:turn off|disable|stop|deactivate) (?:the )?(?:hand|gesture)s? (?:control|tracking|mode)|"
+                    r"(?:hand|gesture) (?:control|tracking|mode) off", t):
+        return hologram.control("gestures_off")
+    if not hologram.state["open"]:
+        return None
+    # While a hologram is open
+    if re.fullmatch(r"(?:close|dismiss|hide) it|(?:thats|that will be|that is) all", t):
+        return hologram.control("close")
+    if re.fullmatch(r"(?:expand|explode|open up|break down|pull apart)(?: it| that| this| more| further)?", t):
+        return hologram.control("expand")
+    m = re.fullmatch(r"(?:expand|explode|open up|break down)(?: on)? (?:the |a |an )?(.+)", t)
+    if m:
+        return hologram.control("expand", m.group(1))
+    if re.fullmatch(r"collapse(?: it)?|put it (?:back )?together|reassemble(?: it)?", t):
+        return hologram.control("collapse")
+    if re.fullmatch(r"zoom in|closer|bigger", t):
+        return hologram.control("zoom_in")
+    if re.fullmatch(r"zoom out|further|smaller", t):
+        return hologram.control("zoom_out")
+    if re.fullmatch(r"(?:rotate|spin|turn)(?: it| that)?(?: around)?", t):
+        return hologram.control("rotate")
+    if re.fullmatch(r"reset(?: the)? view|cent(?:er|re) it", t):
+        return hologram.control("reset")
+    return None
+
+
+def _reminders(now):
+    from . import tools
+    items = sorted(tools._load_reminders(), key=lambda r: r["due"])
+    if not items:
+        return "You have no reminders set."
+
+    def when(due):
+        d = dt.datetime.fromisoformat(due)
+        day = ("today" if d.date() == now.date() else "tomorrow" if d.date() == now.date() + dt.timedelta(days=1)
+               else f"on {d:%A} {d.day} {d:%B}")
+        return f"{d:%I:%M %p}".lstrip("0") + f" {day}"
+    said = [f"{r['message'].rstrip('.')} at {when(r['due'])}" for r in items[:5]]
+    count = f"{len(items)} reminder{'s' if len(items) != 1 else ''}"
+    return f"You have {count}: " + "; ".join(said) + "." + (" And more after that." if len(items) > 5 else "")
 
 
 NUMBER_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,

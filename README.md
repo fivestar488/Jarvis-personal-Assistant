@@ -153,11 +153,43 @@ Jarvis can also think with a small AI model running on your own PC through [Olla
    - `auto`: Claude normally, switching to offline mode when the credit runs out, the daily budget is spent or the internet is down. It goes back to Claude by itself.
    - `local`: always offline.
 
-Free instant answers work in every mode, with or without credit. They cover the time, sums, units, timers, reminders like "remind me to call mum in 20 minutes", "open Spotify", pause/skip and the weather. A faster PC can use a bigger, smarter model: set `JARVIS_LOCAL_MODEL=qwen3:8b` (or `llama3.1:8b`).
+While offline mode is in use, Jarvis keeps the model loaded (about 2.5 GB of RAM) and has it read its instructions in the background, so replies start within a few seconds. Questions that need a tool (email, calendar) are slower.
+
+Free instant answers work in every mode, with or without credit. They cover the time, sums, units, timers, reminders like "remind me to call mum in 20 minutes", "open Spotify", pause/skip, the weather, the news, "what's playing", "what are my reminders" and "read my notes". A faster PC can use a bigger, smarter model: set `JARVIS_LOCAL_MODEL=qwen3:8b` (or `llama3.1:8b`).
+
+## Holograms and hand control
+
+Like Tony Stark's workshop: Jarvis can put a 3D hologram on the HUD that you control with your hands through the webcam.
+
+- **Topics:** "Show me a hologram of how a car engine works". A 3D map of its main parts appears. Clap and the picked part bursts into its own parts.
+- **3D models:** "Show me the globe / solar system / an atom / DNA / a jet engine in 3D". Clap to pull it apart into labelled pieces.
+- **Panels:** "Expand the weather" (or news, agenda, system, Spotify, reminders) blows that panel up full-screen.
+
+With your hands:
+
+| Gesture | What it does |
+|---|---|
+| Move your hand | Moves the cursor |
+| Pinch (thumb and index finger) | Clicks or picks a part. Pinch a picked part again to expand it |
+| Pinch and drag | Turns the hologram |
+| Pinch with both hands, pull apart or together | Zooms |
+| Clap, or spread both open hands apart | Expands or pulls apart |
+| Flick an open hand sideways | Throws the hologram away |
+
+Turn on **GESTURE** at the bottom of the HUD (or say "turn on hand control"), then point at a panel and clap to open it as a hologram. The hand tracking runs inside the browser, and no video leaves your PC. The mouse works too: drag to turn, scroll to zoom, double-click to expand, Esc to close. Expanding a topic asks the AI, so it takes a few seconds on Claude and around 30–40 s in free offline mode.
+
+## Desk scanner
+
+Point a webcam down at a mat or your desk (a cheap USB webcam on a clip or stand works), put something on it, and say **"scan this"** or **"what's on the mat?"**. Jarvis photographs it, works out what it is and tells you about it: what it's for, a few useful facts and a tip. The scan also appears as a hologram on the HUD. Clap to break the object down into a 3D map of its parts.
+
+- **"Start the scanner"**: watch mode. Jarvis scans by himself whenever you put something new down and hold still for a moment. **"Stop the scanner"** turns it off.
+- Jarvis uses a second webcam automatically if one is plugged in, otherwise the laptop's own. To choose one, set `JARVIS_DESK_CAMERA` in `.env`.
+- Seeing uses Claude. In free offline mode it uses a small vision model instead: `ollama pull moondream` (about 1.7 GB). That's slower and less detailed, but free.
 
 ## Things to try
 
 - "Introduce yourself"
+- "Show me a jet engine in 3D", then clap to pull it apart
 - "Open Spotify" / "Close Chrome"
 - "Play Thunderstruck on YouTube"
 - "What's the weather in London tomorrow?" / "What's the latest news on SpaceX?"

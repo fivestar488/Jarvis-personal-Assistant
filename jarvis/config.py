@@ -101,6 +101,10 @@ NEWS_FEEDS = [
     for entry in os.getenv("JARVIS_NEWS_FEEDS", "").split(",") if "=" in entry
 ] or DEFAULT_NEWS_FEEDS
 CAMERA_INDEX = int(os.getenv("JARVIS_CAMERA_INDEX", "0"))
+# Desk scanner: a webcam pointed down at a mat. "auto" = a second camera if one is plugged in, else the main one.
+DESK_CAMERA = (os.getenv("JARVIS_DESK_CAMERA") or "auto").strip().lower()
+# Free offline mode's eyes for the desk scanner (a small vision model through Ollama)
+LOCAL_VISION_MODEL = os.getenv("JARVIS_LOCAL_VISION_MODEL") or "moondream"
 
 # Seconds Jarvis keeps listening for a follow-up after answering, without needing the wake word again.
 FOLLOW_UP_SECONDS = float(os.getenv("JARVIS_FOLLOW_UP_SECONDS", "6"))

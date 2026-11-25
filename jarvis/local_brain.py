@@ -9,6 +9,7 @@ credit runs out or the internet/API is down, and trying Claude again after a whi
 """
 import json
 import re
+import threading
 import time
 import urllib.request
 
@@ -19,6 +20,8 @@ from . import config, personality, tools
 # Which tools to offer, by words in the request. Kept small on purpose: a tiny model picks better from few tools.
 # Most specific first: only the first MAX_TOOLS matches are offered.
 TOOL_GROUPS = [
+    (r"hologram|\bholo\b|\b3d\b", ["show_hologram", "hologram_control"]),
+    (r"\bscan|\b(mat|desk|table|workbench)\b", ["scan_desk", "desk_scanner_mode"]),
     (r"\bgot it\b|stop reminding", ["acknowledge_reminder"]),
     (r"(cancel|delete|remove).*remind", ["cancel_reminder", "list_reminders"]),
     (r"(what|which|list|any).*remind", ["list_reminders"]),
@@ -51,12 +54,18 @@ TOOL_GROUPS = [
 SAY_RESULT = {"set_reminder", "cancel_reminder", "acknowledge_reminder", "open_application", "close_application",
               "open_url", "open_path", "google_search", "play_youtube", "spotify_play", "spotify_control",
               "spotify_like_current", "media_control", "remember", "forget", "save_note", "set_clipboard",
-              "type_text", "system_power", "start_security_mode", "stop_security_mode"}
+              "type_text", "system_power", "start_security_mode", "stop_security_mode", "show_hologram",
+              "hologram_control", "scan_desk", "desk_scanner_mode"}
 MAX_TOOLS = 3           # every tool description costs a laptop CPU seconds to read
 MEMORY_FACTS = 8
-HISTORY_EXCHANGES = 3   # earlier exchanges sent back each time (each costs CPU time to re-read)
+# Earlier exchanges sent back each time. Trimmed in one go (down to KEEP) rather than one by one: Ollama
+# remembers the last prompt it read, so a conversation that only grows at the end is never re-read.
+MAX_HISTORY_EXCHANGES = 4
+KEEP_HISTORY_EXCHANGES = 2
 MAX_STEPS = 6
 CLAUDE_RETRY_MINUTES = 30
+KEEP_LOADED_MINUTES = 30  # while Jarvis runs in free mode, the model stays in memory (loading it takes ~30s)
+OFFLINE_FLAG = config.DATA_DIR / "offline-last-time"  # auto mode: Claude was unavailable when last tried
 
 _claude_rest_until = 0.0
 
@@ -65,10 +74,36 @@ def rest_claude():
     """Auto mode: Claude just failed (no credit, offline...), so use the local model for a while."""
     global _claude_rest_until
     _claude_rest_until = time.monotonic() + CLAUDE_RETRY_MINUTES * 60
+    try:
+        OFFLINE_FLAG.touch()
+    except OSError:
+        pass
+
+
+def claude_back():
+    """Auto mode: Claude answered, so next time Jarvis starts there's no need to get the local model ready."""
+    if OFFLINE_FLAG.exists():
+        OFFLINE_FLAG.unlink(missing_ok=True)
 
 
 def claude_resting():
     return time.monotonic() < _claude_rest_until
+
+
+_brains = []
+
+
+def prompt_disturbed():
+    """Something else just used the model (e.g. a hologram), so it no longer has Jarvis's chat prompt read:
+    have it re-read that in the background."""
+    for brain in _brains:
+        brain._read = None
+        brain.prepare()
+
+
+def expect_local():
+    """Will the local model probably be needed? Then it's worth loading it at startup."""
+    return config.BRAIN == "local" or (config.BRAIN == "auto" and OFFLINE_FLAG.exists())
 
 
 def pick_tools(text):
@@ -123,9 +158,9 @@ def available():
     return want in models
 
 
-def warm_up():
-    """Load the model into memory now (and keep it there for an hour) so the first question isn't slow."""
-    body = json.dumps({"model": config.LOCAL_MODEL, "prompt": "", "keep_alive": "60m"}).encode()
+def keep_loaded():
+    """Load the model into memory if needed and keep it there for KEEP_LOADED_MINUTES (Ollama's default is 5)."""
+    body = json.dumps({"model": config.LOCAL_MODEL, "prompt": "", "keep_alive": f"{KEEP_LOADED_MINUTES}m"}).encode()
     try:
         req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/generate", body,
                                      {"Content-Type": "application/json"})
@@ -150,19 +185,52 @@ class LocalBrain:
     def __init__(self):
         self.client = anthropic.Anthropic(base_url=config.OLLAMA_URL, api_key="ollama", timeout=300, max_retries=0)
         self.history = []  # plain text only: [{"role": "user"/"assistant", "content": str}, ...]
+        self._read = None  # (system prompt, history) the model has already read, so it needn't read it again
+        self._keeper = None
+        _brains.append(self)
 
     def reset(self):
         self.history = []
 
+    def prepare(self):
+        """In the background: load the model, keep it loaded while Jarvis runs, and have it read the instructions
+        and recent conversation now, so the next question only has to read the question itself."""
+        threading.Thread(target=self._prepare, daemon=True).start()
+
+    def _prepare(self):
+        if not available():
+            return
+        state = (_system(), json.dumps(self.history))
+        if self._read != state:
+            try:
+                self.client.messages.create(model=config.LOCAL_MODEL, max_tokens=1, system=state[0],
+                                            messages=self.history + [{"role": "user", "content": "Hello"}])
+                self._read = state
+            except anthropic.APIError:
+                pass
+        keep_loaded()  # after the request above, which sets Ollama's default 5 minutes
+        if not self._keeper:
+            self._keeper = threading.Thread(target=self._keep_loaded_loop, daemon=True)
+            self._keeper.start()
+
+    def _keep_loaded_loop(self):
+        while True:
+            time.sleep(KEEP_LOADED_MINUTES * 60 * 0.8)
+            if config.BRAIN == "local" or claude_resting():
+                keep_loaded()
+
     def ask(self, text, on_text=None, on_status=None):
         chosen = pick_tools(text)
         schemas = [_short_schema(n) for n in chosen]
-        messages = self.history[-HISTORY_EXCHANGES * 2:] + [{"role": "user", "content": text}]
+        system = _system()
+        messages = self.history + [{"role": "user", "content": text}]
+        plain = True  # a single answer with no tools: the model has then read the whole new conversation
         reply = ""
         for _ in range(MAX_STEPS):
-            request = dict(model=config.LOCAL_MODEL, max_tokens=400, system=_system(), messages=messages)
+            request = dict(model=config.LOCAL_MODEL, max_tokens=400, system=system, messages=messages)
             if schemas:
                 request["tools"] = schemas
+                plain = False
             if on_text:
                 with self.client.messages.stream(**request) as stream:
                     for piece in stream.text_stream:
@@ -198,5 +266,9 @@ class LocalBrain:
                 break
         reply = reply or "Done."
         self.history += [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
-        self.history = self.history[-HISTORY_EXCHANGES * 2:]
+        if len(self.history) > MAX_HISTORY_EXCHANGES * 2:
+            self.history = self.history[-KEEP_HISTORY_EXCHANGES * 2:]
+        elif plain and reply != "Done.":
+            self._read = (system, json.dumps(self.history))
+        self.prepare()  # re-read in the background if this answer used tools or trimmed the history
         return reply

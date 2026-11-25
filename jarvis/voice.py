@@ -21,19 +21,25 @@ class SentenceSplitter:
     """Collects streamed reply text and hands back each complete sentence, so the first one can be spoken while
     the rest is still being written. Very short pieces wait for more ("Okay." on its own sounds clipped)."""
     END = re.compile(r"(?<=[.!?…])[\"')\]]?\s+|\n\s*\n")
+    # The first piece may also end at a natural pause (comma, colon, dash), so he starts talking sooner
+    PAUSE = re.compile(r"(?<=[,;:—–])\s+")
     MIN_CHARS = 20
+    MIN_FIRST_PAUSE_CHARS = 30
 
     def __init__(self, emit):
-        self.emit, self.buf = emit, ""
+        self.emit, self.buf, self.started = emit, "", False
 
     def feed(self, text):
         self.buf += text
         while True:
             m = next((m for m in self.END.finditer(self.buf) if m.start() >= self.MIN_CHARS), None)
+            if not m and not self.started:
+                m = next((m for m in self.PAUSE.finditer(self.buf) if m.start() >= self.MIN_FIRST_PAUSE_CHARS), None)
             if not m:
                 return
             sentence, self.buf = self.buf[:m.end()].strip(), self.buf[m.end():]
             if speakable(sentence):
+                self.started = True
                 self.emit(sentence)
 
     def flush(self):
@@ -42,14 +48,25 @@ class SentenceSplitter:
             self.emit(rest)
 
 
+_spoken_cache = {}  # short phrases he says often ("Paused.", "Done.") -> their audio, so they play instantly
+
+
 async def synthesize(text):
     """Text -> MP3 bytes in Jarvis's voice."""
     import edge_tts
+    key = (speakable(text), config.VOICE, config.VOICE_RATE, config.VOICE_PITCH)
+    if key in _spoken_cache:
+        return _spoken_cache[key]
     audio = bytearray()
-    async for chunk in edge_tts.Communicate(speakable(text), config.VOICE, rate=config.VOICE_RATE, pitch=config.VOICE_PITCH).stream():
+    async for chunk in edge_tts.Communicate(key[0], config.VOICE, rate=config.VOICE_RATE, pitch=config.VOICE_PITCH).stream():
         if chunk["type"] == "audio":
             audio.extend(chunk["data"])
-    return bytes(audio)
+    audio = bytes(audio)
+    if len(key[0]) <= 40 and audio:
+        if len(_spoken_cache) > 200:
+            _spoken_cache.pop(next(iter(_spoken_cache)))
+        _spoken_cache[key] = audio
+    return audio
 
 
 _whisper = {}

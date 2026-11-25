@@ -394,6 +394,7 @@ let clapToWake = true, clapWait = null, clapEar = null, lastClap = 0;
 
 function heardClap() {
   lastClap = Date.now();
+  if (!clapWait && typeof Holo !== "undefined" && Holo.onClap()) return;  // a hologram is open: the clap expands it
   if (!clapWait) {
     playActivationSong();  // a clap on its own starts the music; "Wake up, daddy's home" within 5 s powers him up too
     return;
@@ -423,7 +424,8 @@ function cancelClapWait() {
 
 // Keep the clap detector running exactly while it's needed.
 function syncClapEar() {
-  const needed = clapToWake && canRecord && activation.length && (handsFree || rec || clapWait);
+  const needed = canRecord && ((clapToWake && activation.length && (handsFree || rec || clapWait))
+    || (typeof Holo !== "undefined" && Holo.wantsClaps()));  // holograms: a clap expands them
   if (needed && !clapEar) startClapEar();
   else if (!needed && clapEar) { clapEar.stop(); clapEar = null; }
 }
@@ -541,6 +543,9 @@ function handle(ev) {
     case "confirm_done":
       if (confirmId === ev.id) hideConfirm();
       break;
+    case "holo":  // open, change or close a hologram (see holo.js)
+      if (typeof Holo !== "undefined") Holo.handle(ev);
+      break;
   }
 }
 
@@ -585,7 +590,7 @@ if (canListen && engine === "local") warmLocalSpeech();
 // Jarvis's own speech recognition. It records only while you're talking (plus a moment before, so the
 // first word isn't clipped) and sends each phrase to the PC. To the rest of the code it looks just like
 // the browser's SpeechRecognition: start(), abort(), onresult, onerror, onend.
-const PRE_ROLL_MS = 400, PHRASE_END_MS = 1200, MAX_PHRASE_MS = 25000;
+const PRE_ROLL_MS = 400, PHRASE_END_MS = 950, MAX_PHRASE_MS = 25000;
 
 function to16k(input, rate) {
   const ratio = rate / 16000, out = new Int16Array(Math.floor(input.length / ratio));
@@ -765,9 +770,17 @@ function startListening(mode) {
 // ---------- collecting a spoken command ----------
 // Browsers split speech into chunks at every little pause. Instead of sending the first chunk,
 // we keep adding chunks and only send once you've been quiet for SILENCE_MS.
-const SILENCE_MS = 2200;      // how long you can pause mid-sentence without being cut off
+// How long you can pause before the command is sent. Short when what you said sounds finished, long when it
+// ends mid-thought ("remind me to call mum and...", "open the..."), so you aren't cut off.
+const SILENCE_MS = 1000, SILENCE_MID_MS = 2200;
+const UNFINISHED = /\b(and|or|but|to|the|a|an|of|for|with|my|your|in|on|at|about|from|is|are|that|this|then|so|um+|uh+|like|please|jarvis)$/i;
 // Jarvis's own engine already waited for a pause (PHRASE_END_MS) and then for Whisper, so a short wait is enough.
-const silenceMs = () => (engine === "local" ? 600 : SILENCE_MS);
+const silenceMs = () => {
+  const said = ((capture?.text || "") + " " + (capture?.interim || "")).trim().replace(/[\s,.!?]+$/, "");
+  const unfinished = UNFINISHED.test(said) || /,$/.test((capture?.text || "").trim());
+  if (engine === "local") return unfinished ? 1200 : 450;
+  return unfinished ? SILENCE_MID_MS : SILENCE_MS;
+};
 const FIRST_WORDS_MS = 7000;  // after "Jarvis" alone (or tapping the mic), how long to wait for you to start
 let capture = null;           // { text, timer } while a command is being collected
 
@@ -783,6 +796,7 @@ function armCapture(ms) {
 }
 function feedCapture(final, interim) {
   if (final) capture.text = (capture.text + " " + final).trim();
+  capture.interim = interim || "";
   showCapture(interim);
   armCapture(capture.text || interim ? silenceMs() : FIRST_WORDS_MS);
 }

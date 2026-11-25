@@ -18,8 +18,8 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (briefing, config, email_watch, feeds, google_tools, meetings, memory_tidy, network, notify, security,
-               spend, suggestions, telegram_bot, tools, watchers)
+from . import (briefing, config, email_watch, feeds, google_tools, hologram, meetings, memory_tidy, network, notify,
+               security, spend, suggestions, telegram_bot, tools, watchers)
 from .brain import Brain
 from .voice import SentenceSplitter, synthesize, transcribe_pcm, warm_whisper
 
@@ -159,6 +159,13 @@ class HudInterface:
                 return
             await broadcast({"type": "announce", "text": text, "audio": await voice_for(text), "ack": ack})
         from_thread(send())
+
+    def hud(self, event):
+        """Send an event to every open HUD screen (holograms). False if none is open."""
+        if not clients:
+            return False
+        from_thread(broadcast(event))
+        return True
 
 
 greeted_out_loud = False
@@ -360,6 +367,23 @@ async def transcribe(key: str, request: Request):
     return {"text": text}
 
 
+@app.post("/api/holo/expand")
+async def holo_expand(key: str, request: Request):
+    """The parts of a topic for the hologram's 'expand' step. Body: {"path": ["jet engine", "turbine"]}."""
+    check_key(key)
+    path = (await request.json()).get("path") or []
+    try:
+        return {"parts": await asyncio.to_thread(hologram.expand, path)}
+    except Exception as e:
+        raise HTTPException(503, f"Couldn't work that out: {e}")
+
+
+@app.get("/api/holo/panel")
+async def holo_panel(key: str, name: str):
+    check_key(key)
+    return await asyncio.to_thread(hologram.panel_data, name)
+
+
 @app.get("/api/activation-song")
 async def activation_song(key: str):
     """The music file for the power-up, played in the background by the HUD."""
@@ -427,6 +451,9 @@ async def websocket(ws: WebSocket, key: str = ""):
             elif event.get("type") == "ack_reminder":  # "Got it" on a repeating reminder
                 result = await asyncio.to_thread(tools.acknowledge_reminder, str(event.get("id", "")))
                 await ws.send_json({"type": "status", "text": result})
+            elif event.get("type") == "holo_state":  # what the HUD's hologram is showing (for "expand the turbine")
+                hologram.state.update(open=bool(event.get("open")), kind=str(event.get("kind", "")),
+                                      subject=str(event.get("subject", "")))
             elif event.get("type") == "suggestion_reply":
                 result = await asyncio.to_thread(suggestions.answer, str(event.get("id")), bool(event.get("accept")))
                 if result:

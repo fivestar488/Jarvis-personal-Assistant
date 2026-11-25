@@ -498,3 +498,139 @@ a.tk:hover { color: var(--cyan-hi); }
 @media (prefers-reduced-motion: reduce) {
   .spin, .scanbar, .halo, .link.online i { animation: none; }
 }
+
+/* ---------- holograms (holo.js): 3D views controlled by hand through the webcam ---------- */
+#holo [hidden], #hand-cam[hidden] { display: none !important; }
+#holo {
+  position: fixed; inset: 0; z-index: 70; overflow: hidden; user-select: none; touch-action: none;
+  background: radial-gradient(ellipse at 50% 55%, rgba(var(--c-rgb), .1), rgba(var(--p-rgb), .93) 62%, rgba(0, 0, 0, .97));
+  backdrop-filter: blur(3px);
+}
+#holo::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(var(--c-rgb), .05) 0 1px, transparent 1px 4px);
+}
+#holo.show { animation: holoIn .45s cubic-bezier(.2, .9, .3, 1.15); }
+#holo.hide { animation: holoOut .38s forwards; }
+#holo.fly-left { animation: holoFlyL .38s ease-in forwards; }
+#holo.fly-right { animation: holoFlyR .38s ease-in forwards; }
+@keyframes holoIn { from { opacity: 0; transform: scale(.85); filter: brightness(2.5); } }
+@keyframes holoOut { to { opacity: 0; transform: scaleY(.02); filter: brightness(3); } }
+@keyframes holoFlyL { to { opacity: 0; transform: translateX(-70vw) rotate(-8deg) scale(.6); } }
+@keyframes holoFlyR { to { opacity: 0; transform: translateX(70vw) rotate(8deg) scale(.6); } }
+.holo-stage, .holo-stage canvas { position: absolute; inset: 0; display: block; }
+
+.holo-cards { position: absolute; inset: 120px 6vw 90px; display: none; perspective: 1400px; }
+#holo.kind-panel .holo-cards { display: grid; place-items: center; }
+.holo-sheet {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;
+  width: min(1100px, 100%); transform-style: preserve-3d; transition: gap .4s;
+}
+.holo-sheet.spread { gap: 30px; }
+.hc {
+  position: relative; padding: 16px 18px; color: var(--text); font-family: var(--body-font);
+  border: 1px solid var(--cyan-dim); background: rgba(var(--c-rgb), .06);
+  box-shadow: inset 0 0 24px rgba(var(--c-rgb), .12), 0 0 18px rgba(var(--c-rgb), .1);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  animation: hcIn .5s backwards; transition: transform .5s cubic-bezier(.2, .9, .3, 1.1), background .2s;
+}
+.holo-sheet.spread .hc { transform: translateZ(90px) rotateY(calc((var(--i) - (var(--n) - 1) / 2) * 3deg)); }
+@keyframes hcIn { from { opacity: 0; transform: translateZ(-220px) scale(.8); } }
+.hc.wide { grid-column: 1 / -1; }
+.hc small { font-family: var(--hud-font); font-size: 10px; letter-spacing: .25em; color: var(--muted); }
+.hc b { display: block; font-size: 18px; color: var(--cyan-hi); margin: 4px 0; }
+.hc p { margin: 4px 0 0; font-size: 15px; color: var(--muted); }
+.hc .big { font-family: var(--hud-font); font-size: clamp(44px, 7vw, 84px); line-height: 1.1; color: var(--cyan); text-shadow: 0 0 24px rgba(var(--c-rgb), .7); }
+.hc .mid { font-family: var(--hud-font); font-size: 26px; margin: 6px 0; color: var(--cyan); text-shadow: 0 0 14px rgba(var(--c-rgb), .6); }
+.hc .bar { height: 6px; margin-top: 10px; background: rgba(var(--c-rgb), .12); }
+.hc .bar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+.hc[data-say] { cursor: pointer; }
+.hc[data-say]:hover { background: rgba(var(--c-rgb), .14); }
+.hc.btn { text-align: center; }
+
+.holo-head { position: absolute; left: 24px; top: 18px; max-width: calc(100% - 170px); pointer-events: none; }
+.holo-kind { font-family: var(--hud-font); font-size: 11px; letter-spacing: .4em; color: var(--amber); }
+.holo-title {
+  margin: 4px 0 0; font-family: var(--hud-font); font-size: clamp(20px, 3.2vw, 36px); letter-spacing: .12em;
+  text-transform: uppercase; color: var(--cyan-hi); text-shadow: 0 0 18px rgba(var(--c-rgb), .8); overflow-wrap: anywhere;
+}
+.holo-path { margin-top: 6px; font-family: var(--hud-font); font-size: 11px; letter-spacing: .18em; color: var(--cyan); }
+.holo-info {
+  position: absolute; left: 24px; bottom: 64px; width: min(380px, calc(100% - 48px)); padding: 14px 16px;
+  border-left: 2px solid var(--amber); background: rgba(var(--p-rgb), .78); pointer-events: none; animation: msgIn .25s;
+}
+.holo-info b { font-family: var(--hud-font); font-size: 14px; letter-spacing: .15em; text-transform: uppercase; color: var(--amber); }
+.holo-info p { margin: 6px 0 0; font-family: var(--body-font); font-size: 17px; color: var(--text); }
+.holo-info p:empty { display: none; }
+.holo-busy {
+  position: absolute; top: 24px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+  font-family: var(--hud-font); font-size: 12px; letter-spacing: .3em; color: var(--amber); white-space: nowrap;
+}
+.holo-busy i { width: 16px; height: 16px; border: 2px solid var(--amber); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+.holo-hint {
+  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px);
+  text-align: center; font-family: var(--hud-font); font-size: 10px; letter-spacing: .22em; color: var(--muted); pointer-events: none;
+}
+.holo-close {
+  position: absolute; right: 20px; top: 18px; padding: 10px 16px; font-family: var(--hud-font); font-size: 12px;
+  letter-spacing: .25em; color: var(--cyan); background: transparent; border: 1px solid var(--cyan-dim); cursor: pointer;
+}
+.holo-close:hover { background: var(--cyan-faint); }
+
+/* Hand cursors, the camera preview, and the panel your hand is pointing at */
+#hand-cursors { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
+.hand-cursor {
+  position: absolute; left: -17px; top: -17px; width: 34px; height: 34px; border: 2px solid var(--cyan); border-radius: 50%;
+  box-shadow: 0 0 14px var(--cyan), inset 0 0 8px rgba(var(--c-rgb), .5); opacity: 0;
+  transition: opacity .2s, width .12s, height .12s, left .12s, top .12s, background .12s;
+}
+.hand-cursor::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--cyan-hi); }
+.hand-cursor.show { opacity: .9; }
+.hand-cursor.second { border-style: dashed; }
+.hand-cursor.show.second { opacity: .55; }
+.hand-cursor.pinch { width: 20px; height: 20px; left: -10px; top: -10px; background: rgba(var(--c-rgb), .5); }
+.hand-cursor.burst { animation: cursorBurst .5s; }
+@keyframes cursorBurst { 50% { box-shadow: 0 0 40px 18px rgba(var(--c-rgb), .6); } }
+#hand-cam {
+  position: fixed; right: 14px; bottom: 84px; z-index: 75; width: 192px; height: 144px; overflow: hidden;
+  border: 1px solid var(--cyan-dim); background: #000; pointer-events: none;
+}
+#hand-cam video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: .35; filter: grayscale(1) contrast(1.2); }
+#hand-cam canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#hand-cam span { position: absolute; left: 6px; top: 4px; font-family: var(--hud-font); font-size: 9px; letter-spacing: .2em; color: var(--cyan); }
+#hand-cam.loading span::after { content: " \00B7 LOADING"; color: var(--amber); }
+.holo-target { outline: 2px solid var(--cyan); outline-offset: 2px; box-shadow: 0 0 30px rgba(var(--c-rgb), .45) !important; }
+
+@media (max-width: 700px) {
+  #hand-cam { width: 120px; height: 90px; bottom: 140px; }
+  .holo-hint { font-size: 8px; letter-spacing: .12em; }
+  .holo-cards { inset: 110px 16px 80px; overflow-y: auto; }
+  .holo-sheet { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+}
+
+/* Desk scanner: the photo with a scan line sweeping over it, and what Jarvis found */
+#holo.kind-scan .holo-cards { display: grid; place-items: center; }
+.hc.scan { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+.scan-photo { position: relative; overflow: hidden; border: 1px solid var(--cyan-dim); background: #000; aspect-ratio: 4 / 3; }
+.scan-photo img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.6) contrast(1.1); }
+.scan-photo::before {
+  content: ""; position: absolute; inset: 0; z-index: 1;
+  background: linear-gradient(rgba(var(--c-rgb), .08) 1px, transparent 1px) 0 0 / 100% 24px,
+              linear-gradient(90deg, rgba(var(--c-rgb), .08) 1px, transparent 1px) 0 0 / 24px 100%;
+}
+.scan-line {
+  position: absolute; left: 0; right: 0; top: 0; height: 3px; z-index: 2; background: var(--cyan);
+  box-shadow: 0 0 18px 6px rgba(var(--c-rgb), .55); animation: scanSweep 1.6s ease-in-out infinite alternate;
+}
+.scan.done .scan-line { animation: none; opacity: 0; }
+.scan.done .scan-photo { border-color: var(--cyan); box-shadow: 0 0 26px rgba(var(--c-rgb), .35); }
+@keyframes scanSweep { to { top: calc(100% - 3px); } }
+.scan-result h3 { margin: 6px 0 8px; font-family: var(--hud-font); font-size: clamp(18px, 2.4vw, 28px); letter-spacing: .08em; text-transform: uppercase; color: var(--cyan-hi); text-shadow: 0 0 14px rgba(var(--c-rgb), .7); }
+.scan-result .what { font-size: 18px; color: var(--text); }
+.scan-result dl { margin: 12px 0 0; display: grid; gap: 8px; }
+.scan-result dl div { border-left: 2px solid var(--amber); padding-left: 10px; animation: msgIn .3s backwards; }
+.scan-result dt { font-family: var(--hud-font); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--amber); }
+.scan-result dd { margin: 2px 0 0; font-size: 16px; color: var(--text); }
+.scan-result .tip { margin-top: 12px; font-style: italic; color: var(--cyan); }
+.scan-result .tip:empty { display: none; }
+@media (max-width: 700px) { .hc.scan { grid-template-columns: 1fr; } }
