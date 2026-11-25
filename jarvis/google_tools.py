@@ -150,8 +150,11 @@ EMAIL_PROPS = {
 @google_tool("Save an email as a Gmail draft for the user to review and send. Prefer this over gmail_send unless "
              "the user clearly asked to send.", EMAIL_PROPS, ["to", "subject", "body"])
 def gmail_draft(to, subject, body, reply_to_id=None):
-    _service("gmail", "v1").users().drafts().create(
+    from . import undo
+    draft = _service("gmail", "v1").users().drafts().create(
         userId="me", body={"message": _build(to, subject, body, reply_to_id)}).execute()
+    undo.offer(f"Saved a draft to {to}",
+               lambda: _service("gmail", "v1").users().drafts().delete(userId="me", id=draft["id"]).execute())
     return f"Draft to {to} saved in Gmail."
 
 
@@ -233,7 +236,50 @@ def calendar_create_event(title, start, end=None, location="", description=""):
         f = _local(dt.datetime.fromisoformat(end)) if end else s + dt.timedelta(hours=1)
         body["start"], body["end"] = {"dateTime": s.isoformat()}, {"dateTime": f.isoformat()}
     created = _service("calendar", "v3").events().insert(calendarId="primary", body=body).execute()
+    from . import undo
+    undo.offer(f"Added '{title}' to your calendar",
+               lambda: _service("calendar", "v3").events().delete(calendarId="primary", eventId=created["id"]).execute())
     return f"Added '{title}' to the calendar. Link: {created.get('htmlLink')}"
+
+
+WORK_START, WORK_END = 9, 18  # time blocks go in these hours
+
+
+def find_free_slot(minutes, start_from=None, days=3):
+    """The first gap of `minutes` in working hours, from now (rounded up to the next quarter hour)."""
+    now = start_from or dt.datetime.now()
+    t = now.replace(second=0, microsecond=0) + dt.timedelta(minutes=(15 - now.minute % 15) % 15)
+    for day in range(days):
+        day_start = (now + dt.timedelta(days=day)).replace(hour=WORK_START, minute=0, second=0, microsecond=0)
+        day_end = day_start.replace(hour=WORK_END)
+        cursor = max(t, day_start)
+        busy = [(_local(dt.datetime.fromisoformat(e["start"])).replace(tzinfo=None),
+                 _local(dt.datetime.fromisoformat(e["end"])).replace(tzinfo=None))
+                for e in list_events(day_start, day_end) if not e["all_day"]]
+        for s, f in sorted(busy):
+            if s - cursor >= dt.timedelta(minutes=minutes):
+                break
+            cursor = max(cursor, f)
+        if day_end - cursor >= dt.timedelta(minutes=minutes):
+            return cursor
+    return None
+
+
+@google_tool("Block out time on his calendar to work on a to-do: finds the next free slot in working hours "
+             "(9:00-18:00, today or the next few days) and adds it. Use for 'block time for X', 'time-block X', "
+             "'find me an hour for X'.",
+             {"task": S("What the time is for"), "minutes": I("How long (default 60)")}, ["task"])
+def block_time(task, minutes=60):
+    minutes = max(15, min(int(minutes or 60), 480))
+    slot = find_free_slot(minutes)
+    if not slot:
+        return f"I couldn't find {minutes} free minutes in working hours over the next few days."
+    end = slot + dt.timedelta(minutes=minutes)
+    calendar_create_event(f"Focus: {task}", slot.strftime("%Y-%m-%dT%H:%M"), end.strftime("%Y-%m-%dT%H:%M"),
+                          description="Time blocked by Jarvis.")
+    day = "today" if slot.date() == dt.date.today() else "tomorrow" if slot.date() == dt.date.today() + dt.timedelta(days=1) \
+        else f"on {slot:%A}"
+    return f"Blocked {slot:%H:%M} to {end:%H:%M} {day} for {task}. Say 'undo' to take it back."
 
 
 @google_tool("Delete a calendar event. The user is asked to approve it first.",

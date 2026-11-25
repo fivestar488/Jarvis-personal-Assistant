@@ -53,10 +53,11 @@ def run(name, args):
     """Run a tool. Returns (content, is_error)."""
     if name not in TOOLS:
         return f"Unknown tool: {name}", True
-    try:
-        return TOOLS[name]["fn"](**args), False
+    from . import privacy
+    try:  # secrets in files, the clipboard, emails or pages are blanked out before the AI sees them
+        return privacy.redact_content(TOOLS[name]["fn"](**args)), False
     except Exception as e:  # report failures back to Claude so it can recover
-        return f"{type(e).__name__}: {e}", True
+        return privacy.redact(f"{type(e).__name__}: {e}"), True
 
 
 def confirm(question):
@@ -102,6 +103,25 @@ def _get_start_apps():
     return _start_apps
 
 
+def _smart_app_match(key, lowered):
+    """Second try when a name doesn't match: initials ('vs code' -> Visual Studio Code), every word present
+    ('word microsoft'), or a looser spelling match."""
+    words = key.split()
+    squashed = key.replace(" ", "")
+    for full, real in sorted(lowered.items(), key=lambda kv: len(kv[0])):
+        name_words = re.findall(r"[a-z0-9]+", full)
+        initials = "".join(w[0] for w in name_words)
+        if len(squashed) >= 2 and (initials == squashed or initials.startswith(squashed) and len(squashed) >= 3):
+            return real
+        if len(words) > 1 and all(any(nw.startswith(w) for nw in name_words) for w in words):
+            return real
+        if len(words) > 1 and words[0] == initials[:len(words[0])] and len(words[0]) >= 2 \
+                and all(any(nw.startswith(w) for nw in name_words) for w in words[1:]):
+            return real  # "vs code": initials of the first part, then a real word
+    close = difflib.get_close_matches(key, lowered.keys(), n=1, cutoff=0.45)
+    return lowered[close[0]] if close else None
+
+
 @tool("Open/launch an application installed on this PC, e.g. 'spotify', 'chrome', 'notepad', 'discord', 'steam'.",
       {"name": S("Name of the app")}, ["name"])
 def open_application(name):
@@ -117,6 +137,13 @@ def open_application(name):
         close = difflib.get_close_matches(key, lowered.keys(), n=1, cutoff=0.6)
         match = lowered[close[0]] if close else None
     if not match:
+        match = _smart_app_match(key, lowered)
+    if not match:  # not in the Start menu: maybe a program on the PATH ("notepad", "cmd", "code")
+        import shutil
+        exe = shutil.which(key.replace(" ", ""))
+        if exe:
+            subprocess.Popen([exe])
+            return f"Opened {name}."
         return f"Couldn't find an app called '{name}'. Similar apps: {difflib.get_close_matches(key, lowered.keys(), n=5, cutoff=0.3)}"
     subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{apps[match]}"])
     return f"Opened {match}."
@@ -129,7 +156,12 @@ def close_application(name):
     key = name.lower().replace(".exe", "").replace(" ", "")
     if not key:  # an empty name would match every running process
         return "Say which app to close. Nothing was closed."
-    procs =[p for p in psutil.process_iter(["name"]) if p.info["name"] and key in p.info["name"].lower().replace(" ", "")]
+    procs = [p for p in psutil.process_iter(["name"]) if p.info["name"] and key in p.info["name"].lower().replace(" ", "")]
+    if not procs:  # second try: a close spelling of a running program ("spotfy", "discrod")
+        running = {p.info["name"].lower().replace(".exe", ""): p.info["name"] for p in psutil.process_iter(["name"]) if p.info["name"]}
+        close = difflib.get_close_matches(key, running.keys(), n=1, cutoff=0.7)
+        if close:
+            procs = [p for p in psutil.process_iter(["name"]) if p.info["name"] == running[close[0]]]
     if not procs:
         return f"No running process matches '{name}'."
     names = sorted({p.info["name"] for p in procs})
@@ -414,6 +446,12 @@ def set_reminder(message, seconds=None, at=None, important=False):
         item["important"] = True
     with _reminder_lock:
         _save_reminders(_load_reminders() + [item])
+
+    def take_back():
+        with _reminder_lock:
+            _save_reminders([r for r in _load_reminders() if r["id"] != item["id"]])
+    from . import undo
+    undo.offer(f"Set a reminder: {message.rstrip('.')}", take_back)
     return (f"{'Important reminder' if important else 'Reminder'} set for {due:%A %d %b at %H:%M:%S} (id {item['id']})."
             + (" I'll warn ahead and keep reminding until you say 'got it'." if important else ""))
 
@@ -566,9 +604,21 @@ def _save_memory(facts):
       "Use when the user says 'remember...' or shares something clearly worth remembering.",
       {"fact": S("The fact, written as a short sentence")}, ["fact"])
 def remember(fact):
+    from . import privacy
+    fact = privacy.redact(fact)  # never keep a password or card number in long-term memory
     facts = load_memory()
     facts.append(fact)
     _save_memory(facts)
+
+    def take_back():
+        kept = load_memory()
+        if fact in kept:
+            kept.reverse()
+            kept.remove(fact)  # the newest copy
+            kept.reverse()
+            _save_memory(kept)
+    from . import undo
+    undo.offer(f"Remembered: {fact[:60]}", take_back)
     return "Remembered."
 
 
@@ -585,8 +635,17 @@ def forget(text):
 
 @tool("Save a note to the user's notes file.", {"text": S("The note")}, ["text"])
 def save_note(text):
+    from . import privacy, undo
+    line = f"- [{dt.datetime.now():%Y-%m-%d %H:%M}] {privacy.redact(text)}\n"
     with open(config.NOTES_FILE, "a", encoding="utf-8") as f:
-        f.write(f"- [{dt.datetime.now():%Y-%m-%d %H:%M}] {text}\n")
+        f.write(line)
+
+    def take_back():
+        notes = config.NOTES_FILE.read_text(encoding="utf-8")
+        cut = notes.rfind(line)
+        if cut >= 0:
+            config.NOTES_FILE.write_text(notes[:cut] + notes[cut + len(line):], encoding="utf-8")
+    undo.offer("Saved a note", take_back)
     return "Note saved."
 
 
@@ -595,8 +654,8 @@ def read_notes():
     return config.NOTES_FILE.read_text(encoding="utf-8") if config.NOTES_FILE.exists() else "No notes yet."
 
 
-from . import (google_tools, hologram, memory_tidy, personality, routines, scanner, security,  # noqa: E402,F401
-               spend, spotify_tools, watchers)  # (importing them registers their tools)
+from . import (credit, google_tools, hologram, meals, memory_tidy, minutes, modes, personality,  # noqa: E402,F401
+               routines, scanner, security, spend, spotify_tools, undo, watchers)  # (importing registers their tools)
 
 
 def _load_local_extensions():

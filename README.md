@@ -186,6 +186,20 @@ Point a webcam down at a mat or your desk (a cheap USB webcam on a clip or stand
 - Jarvis uses a second webcam automatically if one is plugged in, otherwise the laptop's own. To choose one, set `JARVIS_DESK_CAMERA` in `.env`.
 - Seeing uses Claude. In free offline mode it uses a small vision model instead: `ollama pull moondream` (about 1.7 GB). That's slower and less detailed, but free.
 
+## More everyday features
+
+- **Dictate anywhere:** press **Ctrl+Alt+D** in any app (email, Word, chat), speak, then press it again. What you said is typed where your cursor is, tidied up. A high beep means it's listening, a low one that it stopped. The speech is turned into text on your PC.
+- **Undo:** anything Jarvis adds (a calendar event, an email draft, a reminder, a note, a memory, a meal) can be taken back for 10 minutes. Say "undo that", or tap UNDO in the comms log.
+- **Time blocking:** "block an hour for the report" finds your next free slot in working hours (9:00 to 18:00) and puts it on your calendar.
+- **Meeting mode:** "start meeting" and Jarvis notes everything he hears, with times. "Meeting summary" gives a recap so far. "End meeting" gives a summary with action items, adds it to your notes and sends it to your phone. "Jarvis, ..." commands still work during the meeting.
+- **Yes/no by voice:** when Jarvis needs your permission (sending an email, closing an app), he asks out loud. Answer "yes" or "no", or use the buttons.
+- **Low Power Mode:** the POWER button, or "low power mode". Pauses always-on listening, hand tracking and the animations to save battery. "Pause listening" just mutes the room mic for a call; "resume listening" brings it back.
+- **Meal log:** "log this meal" photographs your plate and estimates calories, protein, carbs and fat. "How many calories today?" gives the total, and the morning greeting mentions yesterday's. Photo estimates are rough.
+- **Live captions:** "captions on" shows what Jarvis says at the bottom of the screen, over every app.
+- **Smarter app names:** "open vs code" or "open calculater" still finds the right app.
+- **Credit planner:** "how much credit do I need for a month?" or "what's the minimum to get started?". Jarvis estimates from current prices and, once you've used him a few days, from your own spending.
+- **Secrets stay hidden:** card numbers, passwords, API keys and tokens are blanked out before anything from your files, clipboard or emails is sent to the AI, and before anything is saved to memory or the conversation log. What you say to Jarvis directly is sent as you said it. Turn it off with `JARVIS_REDACT=off`.
+
 ## Things to try
 
 - "Introduce yourself"

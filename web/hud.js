@@ -148,6 +148,24 @@ function showSuggestion(id, text) {
   if (activeTab !== "comms") document.querySelector('.tabs [data-tab="comms"]').classList.add("ping");
 }
 
+// Something Jarvis added (calendar event, draft, reminder, note, memory): an UNDO button for 10 minutes.
+function showUndo(id, text, seconds) {
+  const el = document.createElement("div");
+  el.className = "msg suggest undo";
+  el.dataset.undo = id;
+  el.innerHTML = `<div class="who"><span>DONE</span><time>${now()}</time></div><div>${esc(text)}</div>
+    <div class="suggest-actions"><button data-accept="0">UNDO</button></div>`;
+  const btn = el.querySelector("button");
+  btn.onclick = () => { send({ type: "undo", id }); btn.disabled = true; };
+  logEl.appendChild(el);
+  logEl.scrollTop = logEl.scrollHeight;
+  setTimeout(() => undoDone(id), seconds * 1000);
+}
+function undoDone(id) {
+  const el = document.querySelector(`.msg.undo[data-undo="${id}"]`);
+  if (el) el.querySelector(".suggest-actions")?.remove();
+}
+
 function addActivity(text, sys = false) {
   const li = document.createElement("li");
   if (sys) li.className = "sys";
@@ -350,6 +368,11 @@ function send(obj) {
 function submit(text, spoken = false) {
   text = text.trim();
   if (!text) return;
+  if (confirmId && yesNo(text) !== null) {  // the answer to an approval pop-up, spoken or typed
+    input.value = ""; cancelCapture(); stopListening(); setState("idle");
+    answerConfirm(yesNo(text));
+    return;
+  }
   if (songPlaying() && ["stop the music", "stop music", "music off", "turn off the music", "stop the song",
                              "turn the music off"].includes(bareWords(text))) {
     stopSong(); input.value = ""; cancelCapture(); setState("idle");
@@ -539,9 +562,28 @@ function handle(ev) {
       break;
     case "confirm":
       showConfirm(ev.id, ev.question);
+      // Asked out loud, then listening for "yes" or "no" (the buttons still work)
+      if (ev.audio && voiceOn) { spokenText = "awaiting your authorization " + ev.question; setTimeout(() => play(ev.audio, listenForAnswer), 500); }
+      else listenForAnswer();
       break;
     case "confirm_done":
       if (confirmId === ev.id) hideConfirm();
+      break;
+    case "meeting":  // "start meeting" / "end meeting"
+      setMeeting(!!ev.on);
+      break;
+    case "power":  // "low power mode on/off"
+      setLowPower(!!ev.low);
+      break;
+    case "listening":  // "pause listening" / "resume listening"
+      setHandsFree(!ev.paused);
+      addActivity(ev.paused ? "Listening paused." : "Listening resumed.", true);
+      break;
+    case "undo_offer":
+      showUndo(ev.id, ev.text, ev.seconds || 600);
+      break;
+    case "undo_done":
+      undoDone(ev.id);
       break;
     case "holo":  // open, change or close a hologram (see holo.js)
       if (typeof Holo !== "undefined") Holo.handle(ev);
@@ -550,6 +592,20 @@ function handle(ev) {
 }
 
 // ---------- permission pop-up ----------
+// Answering an approval by voice: "yes" / "go ahead" or "no" / "cancel". Short answers only, and never
+// something with both in it ("yes or no" is Jarvis's own question coming back through the mic).
+function yesNo(text) {
+  const t = text.toLowerCase().replace(wakeRe(), " ").replace(/['’]/g, "").replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
+  if (!t || t.split(" ").length > 6 || (/\byes\b/.test(t) && /\bno\b/.test(t))) return null;
+  if (/^(yes|yeah|yep|yup|sure|ok|okay|do it|go ahead|go for it|allow|authori[sz]e|approve|approved|confirm|confirmed|affirmative|please do)\b/.test(t)) return true;
+  if (/^(no|nope|nah|dont|do not|deny|denied|cancel|stop|negative|decline|never mind|nevermind)\b/.test(t)) return false;
+  return null;
+}
+function listenForAnswer() {
+  if (!confirmId || !canListen || rec) return;  // hands-free is already listening: it hears the answer
+  startListening("ptt");
+}
+
 let confirmId = null;
 function showConfirm(id, question) {
   confirmId = id;
@@ -847,6 +903,17 @@ function isEcho(text) {
 
 function onHandsFree(final, interim) {
   const text = final || interim;
+  if (confirmId && final && !isEcho(final) && yesNo(final) !== null) {  // answering an approval, no wake word needed
+    stopAudio(); cancelCapture(); setState("idle");
+    answerConfirm(yesNo(final));
+    return;
+  }
+  // Meeting mode: everything heard goes into the minutes, except "Jarvis, ..." commands and his own voice
+  if (meetingOn && final && !capture && !wakeRe().test(final) && !isEcho(final)) {
+    send({ type: "meeting_text", text: final.trim() });
+    showSubtitle(final.trim(), true);
+    return;
+  }
   if (currentSrc) {
     // Jarvis is talking: only "Jarvis..." or "stop" interrupts him.
     if (isEcho(text) || !(wakeRe().test(text) || STOP_RE.test(text))) return;
@@ -924,6 +991,44 @@ handsBtn.onclick = () => {
 };
 $("#form").addEventListener("submit", (e) => { e.preventDefault(); submit(input.value); });
 $("#btn-reset").onclick = () => submit("new session");
+
+// ---------- Low Power Mode & pausing the mic ----------
+// Low power: no always-on listening, hand tracking or animations, slower stats. Typing, the mic button and the
+// hotkey still work. Pausing the mic just stops always-on listening (for a call), until you resume it.
+let lowPower = store.get("jarvis-lowpower") === "on";
+function setHandsFree(on) {
+  if (handsFree === on) return;
+  handsBtn.onclick();  // the same as tapping HANDS-FREE
+}
+function setLowPower(on) {
+  lowPower = on;
+  store.set("jarvis-lowpower", on ? "on" : "off");
+  document.body.classList.toggle("low-power", on);
+  $("#btn-power").classList.toggle("on", on);
+  $("#btn-power").textContent = on ? "LOW POWER" : "POWER";
+  if (on) {
+    setHandsFree(false);
+    if (typeof Holo !== "undefined") { Holo.handle({ action: "gestures_off" }); Holo.handle({ action: "close" }); }
+  }
+  syncClapEar();
+}
+// Meeting mode ("start meeting"): always listening while it runs, back to how it was afterwards
+let meetingOn = false, handsBeforeMeeting = false;
+function setMeeting(on) {
+  if (meetingOn === on) return;
+  meetingOn = on;
+  document.body.classList.toggle("meeting", on);
+  if (on) { handsBeforeMeeting = handsFree; setHandsFree(true); }
+  else if (!handsBeforeMeeting) setHandsFree(false);
+  addActivity(on ? "Meeting mode: taking notes." : "Meeting mode off.", true);
+}
+
+$("#btn-power").onclick = () => {
+  const on = !lowPower;
+  setLowPower(on);
+  addActivity(on ? "Low Power Mode on." : "Low Power Mode off.", true);
+};
+setLowPower(lowPower);
 document.querySelectorAll("#quick button").forEach((b) => (b.onclick = () => submit(b.dataset.say)));
 
 // ---------- phone pairing (QR code follows the PC between networks) ----------
@@ -987,7 +1092,8 @@ async function pollStats() {
     $("#mini-stats").textContent = `CPU ${Math.round(s.cpu)}%  ·  RAM ${Math.round(s.ram)}%` + (s.battery != null ? `  ·  PWR ${s.battery}%` : "") + `  ·  API ${money(sp.today)}`;
   } catch {}
 }
-pollStats(); setInterval(pollStats, 3000);
+let statsTick = 0;
+pollStats(); setInterval(() => { if (!lowPower || ++statsTick % 5 === 0) pollStats(); }, 3000);  // low power: every 15 s
 
 // ---------- tabs (tablet & phone) ----------
 function selectTab(name) {

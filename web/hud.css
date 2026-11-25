@@ -634,3 +634,13 @@ a.tk:hover { color: var(--cyan-hi); }
 .scan-result .tip { margin-top: 12px; font-style: italic; color: var(--cyan); }
 .scan-result .tip:empty { display: none; }
 @media (max-width: 700px) { .hc.scan { grid-template-columns: 1fr; } }
+
+/* Low Power Mode: everything holds still (the reactor, scan bars, ticker, rings) to save CPU and battery */
+.chip.on { background: rgba(var(--a-rgb), .18); border-color: var(--amber); color: var(--amber); }
+body.low-power *, body.low-power *::before, body.low-power *::after { animation: none !important; transition: none !important; }
+body.low-power .scanbar { display: none; }
+
+/* Meeting mode: a recording badge in the top bar */
+#meeting-badge { display: none; align-items: center; gap: 6px; font-family: var(--hud-font); font-size: 11px; letter-spacing: .2em; color: var(--red); }
+#meeting-badge i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 8px var(--red); animation: blink 1.2s infinite; }
+body.meeting #meeting-badge { display: inline-flex; }

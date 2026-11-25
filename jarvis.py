@@ -225,6 +225,11 @@ def hud_mode(port, open_browser):
         server.summon()
 
     hotkey.start(config.HOTKEY, summon, on_error=lambda msg: console.print(f"[yellow]{msg}[/]"))
+    from jarvis import dictation  # dictate anywhere: press the dictation hotkey, speak, press it again
+    dictation.start_hotkey(on_error=lambda msg: console.print(f"[yellow]Dictation: {msg}[/]"))
+    if config.DICTATE_HOTKEY:
+        console.print(f"[bold cyan]Dictate[/]  →  press [bold]{config.DICTATE_HOTKEY.upper()}[/] in any app, speak, "
+                      "press it again: the text is typed for you")
 
     from jarvis import network
 

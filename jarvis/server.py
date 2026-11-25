@@ -18,8 +18,8 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (briefing, config, email_watch, feeds, google_tools, hologram, meetings, memory_tidy, network, notify,
-               security, spend, suggestions, telegram_bot, tools, watchers)
+from . import (briefing, captions, config, email_watch, feeds, google_tools, hologram, meetings, memory_tidy, minutes,
+               network, notify, security, spend, suggestions, telegram_bot, tools, undo, watchers)
 from .brain import Brain
 from .voice import SentenceSplitter, synthesize, transcribe_pcm, warm_whisper
 
@@ -104,6 +104,14 @@ def phone_payload():
 
 
 async def broadcast(event):
+    kind = event.get("type")
+    if captions.enabled:  # live captions over every app (see captions.py)
+        if kind in ("speech", "announce", "greeting") or (kind == "reply" and not event.get("streamed")):
+            captions.say(event.get("text"))
+        elif kind == "status":
+            captions.status(event.get("text"))
+        elif kind == "state" and event.get("state") == "thinking":
+            captions.status("Thinking...")
     for ws in list(clients.values()):
         try:
             await ws.send_json(event)
@@ -141,7 +149,16 @@ class HudInterface:
         cid = uuid.uuid4().hex
         future = concurrent.futures.Future()
         pending_confirms[cid] = future
-        from_thread(broadcast({"type": "confirm", "id": cid, "question": question}))
+
+        async def ask():
+            # Said out loud too, so you can answer "yes" or "no" by voice. Only the kind of action is spoken
+            # ("Send this email?"), not the details, which stay on screen. The prompt has no answer words in it
+            # ("yes", "no", "go ahead"), so the mic hearing Jarvis himself can never count as an answer.
+            first = question.strip().splitlines()[0].strip()
+            spoken = (first if len(first) <= 90 else first[:87].rsplit(" ", 1)[0] + "...").rstrip("?.") + \
+                "? Awaiting your authorization."
+            await broadcast({"type": "confirm", "id": cid, "question": question, "audio": await voice_for(spoken)})
+        from_thread(ask())
         telegram_bot.ask_confirm(cid, question)  # Allow / Deny buttons on your phone too, if Telegram is set up
         try:
             return future.result(timeout=120)
@@ -429,6 +446,8 @@ async def websocket(ws: WebSocket, key: str = ""):
     await ws.send_json({"type": "hello", "id": client_id, "user": config.USER_NAME, "wake_words": config.WAKE_WORDS,
                         "hotkey": config.HOTKEY, "activation": config.ACTIVATION_PHRASES, "clap_to_wake": config.CLAP_TO_WAKE,
                         "activation_song": bool(config.activation_song_file())})
+    if minutes.active():  # a meeting is being minuted: this screen joins in
+        await ws.send_json({"type": "meeting", "on": True})
     asyncio.create_task(send_greeting(ws))
     while held_announcements:
         text = held_announcements.pop(0)
@@ -450,6 +469,11 @@ async def websocket(ws: WebSocket, key: str = ""):
                     future.set_result(bool(event.get("answer")))
             elif event.get("type") == "ack_reminder":  # "Got it" on a repeating reminder
                 result = await asyncio.to_thread(tools.acknowledge_reminder, str(event.get("id", "")))
+                await ws.send_json({"type": "status", "text": result})
+            elif event.get("type") == "meeting_text":  # meeting mode: a line the HUD heard
+                minutes.add(str(event.get("text", ""))[:2000])
+            elif event.get("type") == "undo":  # the UNDO button in the activity log
+                result = await asyncio.to_thread(undo.undo, str(event.get("id", "")))
                 await ws.send_json({"type": "status", "text": result})
             elif event.get("type") == "holo_state":  # what the HUD's hologram is showing (for "expand the turbine")
                 hologram.state.update(open=bool(event.get("open")), kind=str(event.get("kind", "")),

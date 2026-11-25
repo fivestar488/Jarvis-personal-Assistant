@@ -106,5 +106,12 @@ DESK_CAMERA = (os.getenv("JARVIS_DESK_CAMERA") or "auto").strip().lower()
 # Free offline mode's eyes for the desk scanner (a small vision model through Ollama)
 LOCAL_VISION_MODEL = os.getenv("JARVIS_LOCAL_VISION_MODEL") or "moondream"
 
+# Hide card numbers, passwords and keys before they reach the AI, memory or logs (see jarvis/privacy.py)
+REDACT = (os.getenv("JARVIS_REDACT") or "on").strip().lower() != "off"
+# Dictate anywhere: press this, speak, press it again, and the text is typed into the app you're in (blank = off)
+DICTATE_HOTKEY = os.getenv("JARVIS_DICTATE_HOTKEY", "ctrl+alt+d").strip()
+# Live captions: what Jarvis says shown at the bottom of the screen, over every app (also "captions on/off")
+CAPTIONS = (os.getenv("JARVIS_CAPTIONS") or "off").strip().lower() == "on"
+
 # Seconds Jarvis keeps listening for a follow-up after answering, without needing the wake word again.
 FOLLOW_UP_SECONDS = float(os.getenv("JARVIS_FOLLOW_UP_SECONDS", "6"))

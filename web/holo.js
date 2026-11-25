@@ -223,7 +223,7 @@ const Holo = (() => {
     Object.assign(ctl, { x: 0.9, tx: kind === "object" && subject === "solar system" ? 0.55 : 0.25, y: -1.2, ty: 0, z: 0.2, tz: 1, spin: true });
     beep(520, 0.08); setTimeout(() => beep(980, 0.1), 90);
     send({ type: "holo_state", open: true, kind, subject });
-    if (handsWanted() || canTrackHands()) startHands();
+    if (!lowPowerOn()) startHands();  // (mouse and touch still work in Low Power Mode)
     syncClapEar();
     try {
       await loadThree();
@@ -884,6 +884,7 @@ const Holo = (() => {
   const hand = { on: false, starting: false, landmarker: null, stream: null, lastRun: 0, lastTime: -1,
                  slots: [null, null], history: [], cooldown: 0, lastClap: 0, hover: null };
   const handsWanted = () => store.get("jarvis-gestures") === "on";
+  const lowPowerOn = () => typeof lowPower !== "undefined" && lowPower;  // Low Power Mode (hud.js)
   const canTrackHands = () => !!navigator.mediaDevices?.getUserMedia && window.isSecureContext;
 
   async function startHands() {
@@ -1130,7 +1131,7 @@ const Holo = (() => {
   }
   document.getElementById("tg-gesture")?.addEventListener("click", () => setGestures(!(hand.on || handsWanted())));
   updateGestureButton();
-  if (handsWanted()) setTimeout(startHands, 1500);
+  if (handsWanted() && !lowPowerOn()) setTimeout(startHands, 1500);
 
   // ---------- from Jarvis (voice commands) ----------
   function handle(ev) {

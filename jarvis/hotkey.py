@@ -20,15 +20,16 @@ def _parse(combo):
     return sum(MODIFIERS[m] for m in mods) | MOD_NOREPEAT, vk
 
 
-def start(combo, on_press, on_error):
-    """Listen for the hotkey on a background thread. Calls on_error(message) if it can't be registered."""
+def start(combo, on_press, on_error, ident=1, setting="JARVIS_HOTKEY"):
+    """Listen for the hotkey on a background thread. Calls on_error(message) if it can't be registered.
+    ident: a different number for each hotkey."""
     def loop():
         try:
             mods, vk = _parse(combo)
         except ValueError as e:
             return on_error(str(e))
-        if not user32.RegisterHotKey(None, 1, mods, vk):
-            return on_error(f"The hotkey {combo} is already used by another program. Set JARVIS_HOTKEY in .env to change it.")
+        if not user32.RegisterHotKey(None, ident, mods, vk):
+            return on_error(f"The hotkey {combo} is already used by another program. Set {setting} in .env to change it.")
         msg = wt.MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             if msg.message == WM_HOTKEY:

@@ -128,7 +128,7 @@ def answer(text):
             return tools.acknowledge_reminder()
         return None
 
-    reply = _scanner(t) or _hologram(t)
+    reply = _scanner(t) or _hologram(t) or _actions(t) or _modes(t) or _meeting(t) or _meals(t) or _credit(t)
     if reply:
         return reply
 
@@ -247,6 +247,104 @@ def answer(text):
             return "You haven't saved any notes yet."
         more = f" Those are the latest 5 of {len(lines)}." if len(lines) > 5 else ""
         return "Your notes: " + " ".join(f"{l[:1].upper()}{l[1:].rstrip('.')}." for l in lines[-5:]) + more
+    return None
+
+
+def _modes(t):
+    """Low Power Mode, pausing the mic, captions."""
+    from . import captions, modes
+    if re.fullmatch(r"(?:turn on |enable |activate |go to |go into |switch to )?(?:low power|battery saver|power saving)"
+                    r"(?: mode)?(?: on)?|save (?:the )?battery", t):
+        return modes.low_power(True)
+    if re.fullmatch(r"(?:turn off |disable |exit |leave )(?:the )?(?:low power|battery saver|power saving)(?: mode)?|"
+                    r"(?:low power|battery saver|power saving)(?: mode)? off|full power(?: mode)?", t):
+        return modes.low_power(False)
+    if re.fullmatch(r"(?:pause|stop|mute) (?:the )?(?:listening|microphone|mic)|stop listening(?: to me| to the room)?", t):
+        return modes.pause_listening(True)
+    if re.fullmatch(r"(?:resume|start|unmute|unpause) (?:the )?(?:listening|microphone|mic)|(?:start )?listen(?:ing)? again", t):
+        return modes.pause_listening(False)
+    if re.fullmatch(r"(?:turn on |show |enable )?(?:live )?(?:captions|subtitles)(?: on)?", t):
+        return captions.set_enabled(True)
+    if re.fullmatch(r"(?:turn off |hide |disable )(?:the )?(?:live )?(?:captions|subtitles)|(?:live )?(?:captions|subtitles) off", t):
+        return captions.set_enabled(False)
+    return None
+
+
+UNIT_DAYS = {"day": 1, "week": 7, "month": 30, "year": 365}
+
+
+def _credit(t):
+    """'How much credit do I need for a month?', 'what's the minimum to start using Claude?'"""
+    from . import credit
+    money = r"(?:credit|credits|api credit|money|claude credit)"
+    if re.fullmatch(rf"(?:whats |what is |how much is )?(?:the )?minimum(?: amount)?(?: of)?(?: {money})?"
+                    rf"(?: i need| needed| to buy| i should buy)?(?: to (?:start|get started|begin)(?: using (?:claude|jarvis|it))?"
+                    rf"(?: right now| now)?| to get (?:this|it|jarvis) (?:up and )?running)?", t) and "minimum" in t \
+            or re.fullmatch(rf"how much {money} do i need to (?:start|get started|begin)(?: using claude| with claude)?(?: right now| now)?", t):
+        return credit.minimum()
+    m = re.fullmatch(rf"how much {money} (?:do i need|should i buy|will i need|do i have to buy|to buy)(?: to buy)?"
+                     rf"(?: for| to last| to cover)? (?P<n>a|an|one|two|three|four|five|six|\d+)? ?(?P<unit>day|week|month|year)s?", t)
+    if m:
+        n = m.group("n")
+        amount = int(n) if n and n.isdigit() else NUMBER_WORDS.get(n, 1) if n else 1
+        return credit.estimate(amount * UNIT_DAYS[m.group("unit")])
+    m = re.fullmatch(r"how much (?:will|would|does|is) (?:jarvis|it|claude|using claude|this) (?:cost|be)(?: me)?"
+                     r"(?: per| a| each| for a| for one)? (?P<unit>day|week|month|year)", t)
+    if m:
+        return credit.estimate(UNIT_DAYS[m.group("unit")])
+    return None
+
+
+def _meals(t):
+    """'Log this meal', 'log my lunch', 'how many calories today?'"""
+    from . import meals
+    m = re.fullmatch(r"log (?:this|my|the) (?:meal|food|plate|lunch|dinner|breakfast|snack)|log what im eating|"
+                     r"log (?:this|my) (?:meal|lunch|dinner|breakfast|snack) (?:of |its |it is )?(?P<note>.+)", t)
+    if m:
+        return meals.log(m.groupdict().get("note") or "")
+    if re.fullmatch(r"how many calories (?:have i (?:had|eaten)|did i (?:have|eat))(?: today)?|calories today|"
+                    r"what have i eaten today|how much protein (?:have i had|today)(?: today)?|my (?:calories|meals) today", t):
+        return meals.today_summary()
+    return None
+
+
+def _meeting(t):
+    """Meeting mode: 'start meeting', 'meeting summary', 'end meeting'."""
+    from . import minutes
+    if re.fullmatch(r"(?:start|begin|open)(?: a| the| my)? meeting(?: mode| notes)?|meeting mode(?: on)?|"
+                    r"take (?:the )?(?:meeting )?(?:notes|minutes)(?: for (?:this|the) meeting)?", t):
+        return minutes.start()
+    if not minutes.active():
+        return None
+    if re.fullmatch(r"(?:end|stop|finish|close)(?: the| this)? meeting(?: mode| notes)?|meeting mode off|"
+                    r"(?:the )?meeting is over|were done(?: here)?", t):
+        return minutes.end()
+    if re.fullmatch(r"(?:meeting )?(?:summary|recap)(?: so far)?|summari[sz]e(?: the| this)? meeting(?: so far)?|"
+                    r"recap(?: the| this)? meeting(?: so far)?|what have we (?:said|covered|agreed)(?: so far)?", t):
+        return minutes.recap()
+    return None
+
+
+def _actions(t):
+    """'Undo that', 'block an hour for the report'."""
+    if re.fullmatch(r"undo(?: that| it| the last thing| last| please)?|take (?:that|it) back", t):
+        from . import undo
+        return undo.undo()
+    m = (re.fullmatch(rf"(?:block|book|reserve)(?: out)?(?: some)? time (?:for|to) (?P<task>.+?)"
+                      rf"(?: for {AMOUNT} (?P<unit>hour|minute)s?)?", t)
+         or re.fullmatch(rf"(?:block|book|reserve)(?: out)? {AMOUNT} (?P<unit>hour|minute)s? (?:for|to) (?P<task>.+)", t)
+         or re.fullmatch(r"time ?block (?P<task>.+)", t))
+    if m:
+        from . import google_tools
+        if not google_tools.connected():
+            return None  # let the AI explain how to connect Google
+        n = m.groupdict().get("n")
+        amount = 0.5 if n == "half an" else NUMBER_WORDS.get(n, None) if n and not n.isdigit() else int(n) if n else 1
+        minutes = amount * (60 if (m.groupdict().get("unit") or "hour") == "hour" else 1)
+        try:
+            return google_tools.block_time(m.group("task"), int(minutes))
+        except google_tools.NotConnected as e:
+            return str(e)
     return None
 
 

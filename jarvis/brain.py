@@ -47,6 +47,8 @@ def load_recent():
 
 
 def save_exchange(you, jarvis):
+    from . import privacy
+    you, jarvis = privacy.redact(you), privacy.redact(jarvis)  # the saved copy never keeps secrets
     recent = load_recent() + [{"time": f"{dt.datetime.now():%a %d %b %H:%M}", "you": you, "jarvis": jarvis}]
     RECENT_FILE.write_text(json.dumps(recent[-RECENT_KEEP:], indent=1, ensure_ascii=False), encoding="utf-8")
 

@@ -45,8 +45,14 @@ def greeting(opening=None):
     except Exception:
         pass  # no internet: skip the weather rather than fail the greeting
 
-    if now.hour < 12:  # mornings: anything private add-ons (jarvis/local/) want to say
-        from . import tools
+    if now.hour < 12:  # mornings: yesterday's meal log, and anything private add-ons (jarvis/local/) want to say
+        from . import meals, tools
+        try:
+            line = meals.yesterday_line()
+            if line:
+                lines.append(line)
+        except Exception:
+            pass
         for ext in tools.LOCAL_EXTENSIONS:
             try:
                 line = ext.morning_line() if hasattr(ext, "morning_line") else ""

@@ -22,6 +22,14 @@ from . import config, personality, tools
 TOOL_GROUPS = [
     (r"hologram|\bholo\b|\b3d\b", ["show_hologram", "hologram_control"]),
     (r"\bscan|\b(mat|desk|table|workbench)\b", ["scan_desk", "desk_scanner_mode"]),
+    (r"\bundo\b|take (that|it) back", ["undo_last"]),
+    (r"\bmeeting (mode|notes|minutes|summary)|(start|end|stop) (the |a )?meeting", ["meeting_mode"]),
+    (r"\b(meal|calorie|calories|protein|lunch|dinner|breakfast|snack)\b", ["log_meal", "meals_today"]),
+    (r"\bcredits?\b|how much .*cost|minimum .*(start|claude)", ["credit_estimate"]),
+    (r"low power|battery|power sav", ["set_low_power"]),
+    (r"\b(listening|microphone|mic)\b", ["set_listening_paused"]),
+    (r"captions?|subtitles?", ["set_captions"]),
+    (r"block (out )?(some )?time|time.?block|find me (an|a|some) (hour|time|slot)", ["block_time"]),
     (r"\bgot it\b|stop reminding", ["acknowledge_reminder"]),
     (r"(cancel|delete|remove).*remind", ["cancel_reminder", "list_reminders"]),
     (r"(what|which|list|any).*remind", ["list_reminders"]),
@@ -55,7 +63,9 @@ SAY_RESULT = {"set_reminder", "cancel_reminder", "acknowledge_reminder", "open_a
               "open_url", "open_path", "google_search", "play_youtube", "spotify_play", "spotify_control",
               "spotify_like_current", "media_control", "remember", "forget", "save_note", "set_clipboard",
               "type_text", "system_power", "start_security_mode", "stop_security_mode", "show_hologram",
-              "hologram_control", "scan_desk", "desk_scanner_mode"}
+              "hologram_control", "scan_desk", "desk_scanner_mode", "undo_last", "block_time",
+              "set_low_power", "set_listening_paused", "set_captions", "meeting_mode", "log_meal",
+              "meals_today", "credit_estimate"}
 MAX_TOOLS = 3           # every tool description costs a laptop CPU seconds to read
 MEMORY_FACTS = 8
 # Earlier exchanges sent back each time. Trimmed in one go (down to KEEP) rather than one by one: Ollama
