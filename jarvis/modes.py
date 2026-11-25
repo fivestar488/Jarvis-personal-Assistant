@@ -52,3 +52,10 @@ def status_strip(on):
       {"on": {"type": "boolean"}}, ["on"])
 def set_captions(on):
     return captions.set_enabled(on)
+
+
+@tool("Run the setup doctor: checks the API key and credit, internet, voice, speakers, microphone, webcam, Google, "
+      "Spotify, Telegram, offline mode, the phone link and disk space, and says how to fix anything wrong.")
+def setup_check():
+    from . import doctor
+    return doctor.spoken_summary()

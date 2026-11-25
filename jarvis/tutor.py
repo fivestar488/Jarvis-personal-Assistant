@@ -9,7 +9,6 @@ import datetime as dt
 import difflib
 import json
 import re
-import urllib.request
 
 from . import config, privacy
 from .tools import S, tool
@@ -38,33 +37,10 @@ def _save(decks):
 
 
 def _generate(topic, source_text=""):
-    import anthropic
-    from . import local_brain, spend
+    from . import local_brain
     extra = ("Base every card only on these notes:\n" + source_text[:6000]) if source_text else ""
     prompt = PROMPT.format(n=10, topic=topic, extra=extra)
-    local = config.BRAIN == "local" or (config.BRAIN == "auto" and (local_brain.claude_resting() or spend.over_budget()))
-    if not local:
-        try:
-            r = anthropic.Anthropic().messages.create(
-                model=config.HELPER_MODEL, max_tokens=2000,
-                output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
-                messages=[{"role": "user", "content": prompt}])
-            spend.record(r.model or config.HELPER_MODEL, r.usage, "tutor")
-            return json.loads(next((b.text for b in r.content if b.type == "text"), "{}")).get("cards", [])
-        except anthropic.APIError as e:
-            if config.BRAIN != "auto" or not local_brain.available():
-                raise
-            if isinstance(e, (anthropic.BadRequestError, anthropic.AuthenticationError, anthropic.APIConnectionError)):
-                local_brain.rest_claude()
-    body = {"model": config.LOCAL_MODEL, "stream": False, "format": SCHEMA, "options": {"num_predict": 600, "temperature": 0.3},
-            "keep_alive": f"{local_brain.KEEP_LOADED_MINUTES}m", "messages": [{"role": "user", "content": prompt}]}
-    req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/chat", json.dumps(body).encode(),
-                                 {"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=300) as r:
-            return json.loads(json.load(r)["message"]["content"]).get("cards", [])
-    finally:
-        local_brain.prompt_disturbed()
+    return local_brain.ask_json(prompt, SCHEMA, "tutor", max_tokens=2000, temperature=0.3).get("cards", [])
 
 
 def _deck_name(topic):

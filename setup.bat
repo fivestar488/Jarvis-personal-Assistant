@@ -62,5 +62,7 @@ powershell -NoProfile -Command ^
 
 :done
 echo.
-echo Setup done. Double-click jarvis.bat to start Jarvis. (Settings are in the .env file.)
+echo Setup done. Checking everything works...
+"%VENV%\Scripts\python.exe" -m jarvis.doctor
+echo Double-click jarvis.bat to start Jarvis. (Settings are in the .env file; run jarvis-doctor.bat any time to re-check.)
 pause

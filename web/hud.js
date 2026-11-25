@@ -592,7 +592,8 @@ function startClapEar() {
 
 // Whether this screen should speak a reply: the one that asked, or (for standing orders, which nobody asked out
 // loud) the PC's screen rather than the phone.
-const forMe = (origin) => origin === myId || (origin === "standing" && matchMedia("(pointer: fine)").matches);
+const PC_ORIGINS = new Set(["standing", "tour", "browser"]);  // nobody spoke these out loud: the PC answers
+const forMe = (origin) => origin === myId || (PC_ORIGINS.has(origin) && matchMedia("(pointer: fine)").matches);
 
 function handle(ev) {
   switch (ev.type) {
@@ -710,6 +711,7 @@ function handle(ev) {
       if (typeof Holo !== "undefined") Holo.handle(ev);
       break;
   }
+  if (typeof Bot !== "undefined") Bot.react(ev);  // the workshop bot in the corner (bot.js)
 }
 
 // ---------- permission pop-up ----------

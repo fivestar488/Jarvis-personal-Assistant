@@ -110,6 +110,12 @@ def _target_date(name, today):
 
 def answer(text):
     """The free answer to `text`, or None to let Claude handle it."""
+    # "Capture: call the bank" -> today's daily note, word for word (before cleaning, so capitals and length survive)
+    m = re.match(r"\s*(?:(?:hey |ok |okay )?jarvis[,.!]?\s+)?(?:capture|daily note|add to (?:my |the )?daily note|"
+                 r"note for today)\s*[:,\-]?\s+(.{2,})$", text, re.I | re.S)
+    if m:
+        from . import dailynote
+        return dailynote.add(m.group(1).strip())
     t = _clean(text)
     if not t or len(t) > 80:
         return None
@@ -133,8 +139,8 @@ def answer(text):
         if re.fullmatch(r"(?:stop|end|cancel|quit|finish)(?: the| this)? quiz|stop", t):
             return tutor.stop()
         return tutor.answer(t)
-    reply = (_wave3(t) or _scanner(t) or _hologram(t) or _actions(t) or _modes(t) or _meeting(t) or _meals(t)
-             or _credit(t) or _suit(t))
+    reply = (_wave4(t) or _wave3(t) or _scanner(t) or _hologram(t) or _actions(t) or _modes(t) or _meeting(t)
+             or _meals(t) or _credit(t) or _suit(t))
     if reply:
         return reply
 
@@ -273,6 +279,80 @@ def _modes(t):
         return captions.set_enabled(True)
     if re.fullmatch(r"(?:turn off |hide |disable )(?:the )?(?:live )?(?:captions|subtitles)|(?:live )?(?:captions|subtitles) off", t):
         return captions.set_enabled(False)
+    return None
+
+
+SHAPE = r"(cube|box|block|sphere|ball|orb|cylinder|tube|pipe|cone|torus|donut|doughnut|ring|pyramid)"
+STRETCH = r"(taller|shorter|wider|thinner|narrower|deeper|flatter|bigger|smaller|longer)"
+FINISH_END = (r"(?: finishes| is done| is finished| completes| is complete| closes| exits| quits| ends| stops growing|"
+              r" goes quiet| is idle)")
+
+
+def _wave4(t):
+    """Sculpting, the demo tour, the setup doctor, 'tell me when it finishes', parcels, subscriptions, when to
+    leave, and reading the daily note."""
+    from . import commute, dailynote, doctor, finish, hologram, packages, subscriptions, tour
+    m = (re.fullmatch(rf"sculpt(?: me)?(?: a| an)? {SHAPE}", t)
+         or re.fullmatch(rf"(?:make|build|start|open)(?: me)?(?: a| an)? {SHAPE} (?:hologram )?to sculpt", t))
+    if m:
+        return hologram.sculpt("new", m.group(1))
+    if re.fullmatch(r"(?:open|start)(?: the)? (?:sculpting|sculpt|workshop)(?: bench| mode)?|lets sculpt|sculpt(?: something)?", t):
+        return hologram.sculpt("new", "cube")
+    if hologram.state["open"] and hologram.state["kind"] == "sculpt":
+        m = re.fullmatch(rf"add (?:a |an |another )?{SHAPE}", t)
+        if m:
+            return hologram.sculpt("add", m.group(1))
+        m = re.fullmatch(rf"(?:make (?:it|that|this)(?: piece)? )?(?:a (?:bit|little|lot) )?{STRETCH}", t)
+        if m:
+            return hologram.sculpt("stretch", m.group(1))
+        m = re.fullmatch(r"move (?:it|that|this)(?: piece)? (up|down|left|right|forward|forwards|back|backwards)", t)
+        if m:
+            return hologram.sculpt("move", m.group(1).rstrip("s").replace("backward", "back"))
+        m = re.fullmatch(r"(?:turn|rotate|spin|tilt|flip) (?:it|that|this)(?: piece)?(?: (left|right|over))?", t)
+        if m:
+            return hologram.sculpt("turn", m.group(1) or "right")
+        if re.fullmatch(r"(?:remove|delete|lose) (?:it|that|this)(?: piece| part| one)?", t):
+            return hologram.sculpt("remove")
+        if re.fullmatch(r"next(?: piece| part| one)?|select the next(?: piece| part| one)?", t):
+            return hologram.sculpt("next")
+        m = re.fullmatch(rf"(?:select|pick|grab) the {SHAPE}", t)
+        if m:
+            return hologram.sculpt("select", hologram.shape_name(m.group(1)))
+        if re.fullmatch(r"undo(?: that)?", t):
+            return hologram.sculpt("undo")
+    if re.fullmatch(r"(?:give (?:them|us|me|my friends?|him|her) )?(?:the |a )tour|(?:start |run )?(?:the )?demo(?: mode)?|"
+                    r"show (?:them|my friends?|everyone) what you can do", t):
+        return tour.start_tour()
+    if re.fullmatch(r"(?:stop|end|cancel|skip) (?:the )?(?:tour|demo)", t):
+        return tour.stop_tour()
+    if re.fullmatch(r"(?:check|test) (?:my|the|your) setup|run (?:the )?(?:setup )?doctor|setup (?:check|doctor)|"
+                    r"is everything (?:working|set up)", t):
+        return doctor.spoken_summary()
+    m = re.fullmatch(rf"(?:tell|let) me(?: know)? when (.+?){FINISH_END}", t)
+    if m:
+        return finish.request(m.group(1))
+    if re.fullmatch(r"what are you (?:watching|waiting) for|what are you keeping an eye on", t):
+        return finish.listing()
+    if re.fullmatch(r"stop watching(?: everything| it| that)?", t):
+        return finish.stop_all()
+    if re.fullmatch(r"where(?:s| is| are) my (?:stuff|parcels?|packages?|orders?|deliver(?:y|ies))|"
+                    r"(?:any|my) (?:deliveries|parcels|packages)(?: today)?|whats (?:coming|being delivered)(?: today)?", t):
+        return packages.where()
+    m = re.fullmatch(r"track my (.+)", t)
+    if m:
+        return packages.track(m.group(1))
+    if re.fullmatch(r"what am i paying for|(?:list |show |what are )?my subscriptions|what subscriptions do i (?:have|pay for)|"
+                    r"how much do i (?:pay|spend) on subscriptions", t):
+        return subscriptions.listing()
+    m = re.fullmatch(r"i (?:cancelled|canceled|stopped|ended) (?:my )?(.+?)(?: subscription| membership)?", t)
+    if m and len(m.group(1).split()) <= 4 and subscriptions.has(m.group(1)):  # not "I cancelled my meeting"
+        return subscriptions.remove(m.group(1))
+    if re.fullmatch(r"when (?:should|do) i (?:need to )?leave(?: for .+)?|what time should i leave(?: for .+)?|"
+                    r"how long (?:will it take |does it take )?to get to my next (?:meeting|event|appointment)", t):
+        return commute.leave_advice()
+    m = re.fullmatch(r"(?:whats in|read(?: me)?|show me) (?:my |the )?(todays|daily|yesterdays) note", t)
+    if m:
+        return dailynote.read(dt.date.today() - dt.timedelta(days=1) if m.group(1) == "yesterdays" else None)
     return None
 
 

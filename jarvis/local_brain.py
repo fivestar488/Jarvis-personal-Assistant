@@ -20,7 +20,15 @@ from . import config, personality, tools
 # Which tools to offer, by words in the request. Kept small on purpose: a tiny model picks better from few tools.
 # Most specific first: only the first MAX_TOOLS matches are offered.
 TOOL_GROUPS = [
+    (r"\bsculpt|\bstretch|taller|wider|add a (cube|sphere|cylinder|cone|torus|pyramid)", ["sculpt_hologram"]),
     (r"hologram|\bholo\b|\b3d\b", ["show_hologram", "hologram_control"]),
+    (r"\btour\b|demo mode|show (them|my friends?) what you can do", ["demo_tour"]),
+    (r"check (my|the) setup|setup (check|doctor)|is everything (working|set up)|run the doctor", ["setup_check"]),
+    (r"tell me when|let me know when|when .* (finishes|is done|closes)|stop watching", ["tell_me_when"]),
+    (r"parcel|package|deliver|where'?s my (stuff|order)|track my|shipping|shipped", ["packages"]),
+    (r"subscription|paying for|renew|cancell?ed (my )?\w+", ["subscriptions"]),
+    (r"when should i leave|leave (for|by)|how long .* (get|drive|walk) to|commute|traffic", ["when_to_leave"]),
+    (r"daily note|\bcapture\b|today'?s note", ["daily_note"]),
     (r"\bscan|\b(mat|desk|table|workbench)\b", ["scan_desk", "desk_scanner_mode"]),
     (r"\bundo\b|take (that|it) back", ["undo_last"]),
     (r"\bmeeting (mode|notes|minutes|summary)|(start|end|stop) (the |a )?meeting", ["meeting_mode"]),
@@ -91,7 +99,8 @@ SAY_RESULT = {"set_reminder", "cancel_reminder", "acknowledge_reminder", "open_a
               "perimeter_report", "ask_my_files", "index_my_files", "activity_journal", "wrap_up", "clipboard_history",
               "show_video", "hologram_workspace", "whats_this", "show_my_data", "situation_report", "run_simulation",
               "trip", "game_mode", "break_reminders", "standing_orders", "offline_wake_word", "status_strip",
-              "flashcards"}
+              "flashcards", "sculpt_hologram", "demo_tour", "setup_check", "tell_me_when", "packages", "subscriptions",
+              "when_to_leave", "daily_note"}
 MAX_TOOLS = 3           # every tool description costs a laptop CPU seconds to read
 MEMORY_FACTS = 8
 # Earlier exchanges sent back each time. Trimmed in one go (down to KEEP) rather than one by one: Ollama
@@ -203,6 +212,76 @@ def keep_loaded():
         urllib.request.urlopen(req, timeout=120).read()
     except Exception:
         pass
+
+
+def using_local():
+    """Will one-off jobs use the local model right now (free mode, or auto mode while Claude is unavailable)?"""
+    from . import spend
+    return config.BRAIN == "local" or (config.BRAIN == "auto" and (claude_resting() or spend.over_budget()))
+
+
+def ask_json(prompt, schema, label, text="", max_tokens=1500, local_tokens=600, temperature=0, local_timeout=300):
+    """A one-off structured answer (JSON matching `schema`): Claude's helper model, or the local model in free mode
+    or when Claude is unavailable in auto mode. `text` is data for the prompt (e.g. emails)."""
+    from . import spend
+    local = using_local()
+    messages = [{"role": "user", "content": text}] if text else [{"role": "user", "content": prompt}]
+    system = prompt if text else None
+    if not local:
+        try:
+            request = dict(model=config.HELPER_MODEL, max_tokens=max_tokens, messages=messages,
+                           output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema}})
+            if system:
+                request["system"] = system
+            r = anthropic.Anthropic().messages.create(**request)
+            spend.record(r.model or config.HELPER_MODEL, r.usage, label)
+            return json.loads(next((b.text for b in r.content if b.type == "text"), "{}"))
+        except anthropic.APIError as e:
+            if config.BRAIN != "auto" or not available():
+                raise
+            if isinstance(e, (anthropic.BadRequestError, anthropic.AuthenticationError, anthropic.APIConnectionError)):
+                rest_claude()
+    body = {"model": config.LOCAL_MODEL, "stream": False, "format": schema,
+            "options": {"num_predict": local_tokens, "temperature": temperature},
+            "keep_alive": f"{KEEP_LOADED_MINUTES}m",
+            "messages": ([{"role": "system", "content": system}] if system else []) +
+                        [{"role": "user", "content": (text or prompt)[:6000]}]}
+    req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/chat", json.dumps(body).encode(),
+                                 {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=local_timeout) as r:
+            return json.loads(json.load(r)["message"]["content"])
+    finally:
+        prompt_disturbed()
+
+
+def ask_text(system, text, label, max_tokens=500, model=None):
+    """A one-off plain answer with no tools (so nothing in `text` can make Jarvis do anything): Claude, or the local
+    model in free mode or when Claude is unavailable in auto mode."""
+    from . import spend
+    local = config.BRAIN == "local" or (config.BRAIN == "auto" and (claude_resting() or spend.over_budget()))
+    if not local:
+        try:
+            r = anthropic.Anthropic().messages.create(model=model or config.MODEL, max_tokens=max_tokens, system=system,
+                                                      messages=[{"role": "user", "content": text}],
+                                                      output_config={"effort": "low"})
+            spend.record(r.model or model or config.MODEL, r.usage, label)
+            return "".join(b.text for b in r.content if b.type == "text").strip()
+        except anthropic.APIError as e:
+            if config.BRAIN != "auto" or not available():
+                raise
+            if isinstance(e, (anthropic.BadRequestError, anthropic.AuthenticationError, anthropic.APIConnectionError)):
+                rest_claude()
+    body = {"model": config.LOCAL_MODEL, "stream": False, "options": {"num_predict": max_tokens, "temperature": 0.2},
+            "keep_alive": f"{KEEP_LOADED_MINUTES}m",
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": text[:7000]}]}
+    req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/chat", json.dumps(body).encode(),
+                                 {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            return json.load(r)["message"]["content"].strip()
+    finally:
+        prompt_disturbed()
 
 
 def _system():

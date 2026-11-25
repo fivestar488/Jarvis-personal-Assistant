@@ -175,6 +175,23 @@ def gmail_mark_read(message_id):
 
 # ---------------------------------------------------------------- Calendar
 
+def email_previews(query, max_results=20, skip=()):
+    """[(id, "Date / From / Subject / Preview" text)] for emails matching a Gmail search, leaving out the ids in
+    `skip` (already looked at). Only headers and Gmail's short preview are read, never the full email."""
+    gmail = _service("gmail", "v1")
+    found = gmail.users().messages().list(userId="me", q=query, maxResults=max_results).execute().get("messages", [])
+    out = []
+    for m in found:
+        if m["id"] in skip:
+            continue
+        msg = gmail.users().messages().get(userId="me", id=m["id"], format="metadata",
+                                           metadataHeaders=["Subject", "From", "Date"]).execute()
+        h = {x["name"]: x["value"] for x in msg["payload"].get("headers", [])}
+        out.append((m["id"], f"Date: {h.get('Date', '')}\nFrom: {h.get('From', '')}\nSubject: {h.get('Subject', '')}\n"
+                             f"Preview: {msg.get('snippet', '')}"))
+    return out
+
+
 def _local(when):
     return when.astimezone() if when.tzinfo else when.replace(tzinfo=dt.datetime.now().astimezone().tzinfo)
 

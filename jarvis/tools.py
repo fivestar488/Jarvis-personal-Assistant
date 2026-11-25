@@ -654,10 +654,10 @@ def read_notes():
     return config.NOTES_FILE.read_text(encoding="utf-8") if config.NOTES_FILE.exists() else "No notes yet."
 
 
-from . import (boards, cliphistory, credit, desktop, filesearch, focus, google_tools, hologram,  # noqa: E402,F401
-               journal, meals, memory_tidy, minutes, modes, perimeter, personality, planner, pointer, protocols,
-               routines, scanner, security, spend, spotify_tools, standing, trips, tutor, undo, vitals, wakeword,
-               watchers, wrap)  # (importing them registers their tools)
+from . import (boards, cliphistory, commute, credit, dailynote, desktop, filesearch, finish, focus,  # noqa: E402,F401
+               google_tools, hologram, journal, meals, memory_tidy, minutes, modes, packages, perimeter, personality,
+               planner, pointer, protocols, routines, scanner, security, spend, spotify_tools, standing,
+               subscriptions, tour, trips, tutor, undo, vitals, wakeword, watchers, wrap)  # (importing them registers their tools)
 
 
 def _load_local_extensions():

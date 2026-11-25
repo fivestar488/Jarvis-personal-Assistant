@@ -34,6 +34,7 @@ It's built on the same pipeline as the best Jarvis projects on GitHub: **wake wo
 | `jarvis.bat` | **The HUD.** Opens in its own window, with the arc reactor, live diagnostics, voice and hands-free mode |
 | `jarvis.bat --text` | Type to Jarvis in the terminal (`--text --speak` to hear him) |
 | `jarvis-voice.bat` | Hands-free in the terminal using local Whisper: say **"Jarvis, …"** |
+| `jarvis-doctor.bat` | **Setup doctor.** Checks the mic, speakers, API key and credit, Google, the phone link and more, and says how to fix anything wrong |
 
 ### Using the HUD
 
@@ -235,6 +236,36 @@ Point a webcam down at a mat or your desk (a cheap USB webcam on a clip or stand
 - **Flashcard tutor:** "teach me Spanish", "make flashcards on the French Revolution" or "quiz me on my notes". "Quiz me" asks 5 due cards out loud and marks your spoken answers. Cards you know come back less often.
 - **Break reminders:** "break reminders on" gives a 20-20-20 eye break every 20 minutes of screen time and water every 90 minutes. They're paused during games and when you're away.
 
+## Wave four
+
+- **Sculpt holograms by hand:** "sculpt a cube" puts a shape on the workshop bench.
+  - Pinch with both hands and pull apart sideways to widen it, or up and down to make it taller. Pinch and drag to turn it, and pinch a piece to pick it.
+  - By voice: "add a sphere", "make it taller", "move it up", "turn it over", "remove that", "undo".
+  - "Save it as rocket" keeps it in your hologram workspace; "throw it to my phone" sends it there.
+- **Workshop bot:** a little robot arm beside the reactor. It sways while idle, looks up when you talk, tilts its head while Jarvis thinks and nods while he speaks. It turns toward alerts with its lamp in the alert's colour, and slumps when something fails.
+- **"Give them the tour":** a narrated two-minute demo of the holograms, sculpting and alerts for showing friends. It only uses made-up sample data, so nothing private appears. "Stop the tour" ends it.
+- **Setup doctor:** double-click **`jarvis-doctor.bat`** (it also runs at the end of `setup.bat`), or ask "check my setup".
+  - It checks the API key and credit, internet, voice, speakers, microphone, webcam, Google, Spotify, Telegram, offline mode, the phone link and disk space.
+  - Anything wrong comes with a plain-English fix.
+- **Instant replies:** the moment you give a command he says "Right away, sir", or "One moment, sir" for a question, from clips made at startup. That fills the silent gap while he works (`JARVIS_QUICK_ACKS=off` for the plain thinking phrase).
+- **A voice for the moment:** quieter and slower late at night, brisk for warnings, a touch warmer for good news (`JARVIS_VOICE_TONE=off` to keep one tone).
+- **"Tell me when it finishes":** "tell me when my download finishes", "tell me when Blender closes", "tell me when the install is done" (waits for the PC to go quiet), "tell me when the window says complete". These are free checks with no AI; "what are you watching for?" and "stop watching".
+- **Where's my stuff?:**
+  - Order and shipping emails become a parcel list.
+  - Jarvis mentions anything out for delivery, delivered or delayed.
+  - "Track my headphones" opens the carrier's tracking page.
+  - New emails are checked every two hours, and the AI only reads ones it hasn't seen.
+- **Subscription radar:**
+  - "What am I paying for?" lists your subscriptions from receipts, with a monthly total and renewal dates.
+  - You get a warning three days before anything renews.
+  - "I cancelled Streamflix" takes one off.
+- **Leave now:** for calendar events with an address, Jarvis works out the travel time and tells you ten minutes before you need to leave, then again when it's time.
+  - "When should I leave?" asks any time.
+  - It's free and keyless: OpenStreetMap finds the address and the public OSRM router works out the drive. Set `JARVIS_HOME_ADDRESS` for accuracy and `JARVIS_TRAVEL_MODE` for walking or cycling.
+- **Daily notes:** "capture: call the bank about the card" adds a timestamped line to today's Markdown file in `Documents\Jarvis Daily Notes`, ready for Obsidian. "Ask my files" finds them too. "What's in today's note?" reads it back.
+- **Browser extension:** ask about the page you're on, or summarise what you've highlighted, from Edge or Chrome (**Alt+J** or right-click). The answer appears in the popup and the HUD. Jarvis answers with no tools at all, so nothing on a web page can make him act. To install it, see [`browser-extension/README.md`](browser-extension/README.md).
+- **In free offline mode**, the parcel and subscription scans read five emails at a time in the background, because the laptop's local model is slow.
+
 ## Even more features
 
 - **Ask my files:** "what does my lease say about pets?". Jarvis keeps a private search index of your Documents and Desktop (text, notes, code, PDFs, Word files) on your PC. Only the few best passages go to the AI. Files stored only in OneDrive's cloud are skipped. "Index my files" refreshes it.
@@ -289,6 +320,10 @@ Point a webcam down at a mat or your desk (a cheap USB webcam on a clip or stand
 - "How many days until Christmas?" / "Convert 70 kg to pounds" / "Set a timer for 10 minutes"
 - "Remind me at 3pm to send the report, it's important" ... then "Got it"
 - "Save a routine called start my day: weather, my agenda and play my liked songs" ... then "Start my day"
+- "Sculpt a cylinder", "add a cone", "make it taller", "save it as rocket"
+- "Give them the tour" / "Check my setup" / "Where's my stuff?" / "What am I paying for?" / "When should I leave?"
+- "Tell me when my download finishes" / "Capture: buy a birthday card for Sam"
+
 ## Files
 
 - `jarvis/tools.py`: everything Jarvis can do. To add a skill, write a function with `@tool` above it.

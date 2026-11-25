@@ -736,3 +736,18 @@ body.mood .hud, body.mood .topbar, body.mood .ticker, body.mood .console { filte
 .hc.sit.lvl-warning .mid { color: #ff8a3d; text-shadow: 0 0 12px rgba(255, 138, 61, .6); }
 .hc.sit.lvl-critical { border-color: #ff4b3a; background: rgba(255, 60, 40, .1); }
 .hc.sit.lvl-critical .mid { color: #ff4b3a; }
+
+/* ---------- the workshop bot (web/bot.js) ---------- */
+.core { position: relative; }
+#bot { position: absolute; left: 6px; top: 6px; width: 132px; pointer-events: none; opacity: .85;
+       filter: drop-shadow(0 0 5px rgba(var(--c-rgb), .45)); }
+#bot svg { width: 100%; display: block; overflow: visible; }
+#bot .bot-part { fill: rgba(var(--c-rgb), .12); stroke: var(--cyan); stroke-width: 1.4; }
+#bot .bot-joint { fill: rgba(var(--c-rgb), .3); stroke: var(--cyan-hi); stroke-width: 1.2; }
+#bot .bot-claw { stroke: var(--cyan); stroke-width: 2.2; stroke-linecap: round; fill: none; }
+#bot .bot-shadow { fill: rgba(var(--c-rgb), .12); }
+#bot .bot-eye { transition: fill .3s; filter: drop-shadow(0 0 4px currentColor); }
+#bot .bot-name { position: absolute; left: 28px; bottom: -4px; font-family: var(--hud-font); font-size: 9px;
+                 letter-spacing: .3em; color: var(--muted); }
+@media (max-width: 1100px) { #bot { display: none; } }
+body.low-power #bot { opacity: .4; }

@@ -7,7 +7,6 @@ trip" puts the next one on the globe.
 """
 import datetime as dt
 import json
-import urllib.request
 
 from . import config, privacy, tools
 from .tools import S, tool
@@ -50,33 +49,9 @@ def upcoming():
 
 
 def _extract(text):
-    import anthropic
-    from . import local_brain, spend
-    system = PROMPT.format(today=dt.date.today().isoformat())
-    local = config.BRAIN == "local" or (config.BRAIN == "auto" and (local_brain.claude_resting() or spend.over_budget()))
-    if not local:
-        try:
-            r = anthropic.Anthropic().messages.create(
-                model=config.HELPER_MODEL, max_tokens=1500,
-                output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
-                system=system, messages=[{"role": "user", "content": text}])
-            spend.record(r.model or config.HELPER_MODEL, r.usage, "trips")
-            return json.loads(next((b.text for b in r.content if b.type == "text"), "{}")).get("trips", [])
-        except anthropic.APIError as e:
-            if config.BRAIN != "auto" or not local_brain.available():
-                raise
-            if isinstance(e, (anthropic.BadRequestError, anthropic.AuthenticationError, anthropic.APIConnectionError)):
-                local_brain.rest_claude()
-    body = {"model": config.LOCAL_MODEL, "stream": False, "format": SCHEMA, "options": {"num_predict": 400, "temperature": 0},
-            "keep_alive": f"{local_brain.KEEP_LOADED_MINUTES}m",
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": text[:6000]}]}
-    req = urllib.request.Request(config.OLLAMA_URL.rstrip("/") + "/api/chat", json.dumps(body).encode(),
-                                 {"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=300) as r:
-            return json.loads(json.load(r)["message"]["content"]).get("trips", [])
-    finally:
-        local_brain.prompt_disturbed()
+    from . import local_brain
+    prompt = PROMPT.format(today=dt.date.today().isoformat())
+    return local_brain.ask_json(prompt, SCHEMA, "trips", text=text, local_tokens=400).get("trips", [])
 
 
 def scan():

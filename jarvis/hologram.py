@@ -144,6 +144,48 @@ def hologram_control(action, target=""):
     return control(action, target)
 
 
+# ---------- sculpting: simple shapes stretched and turned by hand ----------
+SHAPES = ["cube", "sphere", "cylinder", "cone", "torus", "pyramid"]
+SHAPE_WORDS = {"box": "cube", "block": "cube", "ball": "sphere", "orb": "sphere", "tube": "cylinder", "pipe": "cylinder",
+               "donut": "torus", "doughnut": "torus", "ring": "torus"}
+SCULPT_SAY = {"add": "Added a {target}.", "stretch": "Done.", "move": "Moved.", "turn": "Turned.",
+              "remove": "Removed that piece.", "next": "Next piece.", "select": "Selected the {target}.",
+              "undo": "Put it back how it was."}
+
+
+def shape_name(word):
+    w = (word or "").lower().strip().rstrip("s")
+    return SHAPE_WORDS.get(w, w if w in SHAPES else "")
+
+
+def sculpt(op, target=""):
+    """op 'new' opens the sculpting bench with one shape; the others change the piece that's selected."""
+    if op == "new":
+        name = shape_name(target) or "cube"
+        if not _send({"action": "open", "kind": "sculpt", "subject": "Sculpture", "shapes": [{"type": name}]}):
+            return "Sculpting needs the HUD. Start Jarvis with jarvis.bat and try again."
+        return (f"A {name} on the bench, {config.USER_NAME}. Pinch with both hands and pull to stretch it, pinch and "
+                "drag to turn it. Say 'add a sphere' for another piece, and 'save it as' a name when you're done.")
+    if op == "add":
+        target = shape_name(target) or "cube"
+    if not state["open"] or state["kind"] != "sculpt":
+        return "There's no sculpture open, sir. Say 'sculpt a cube' to start one."
+    if not _send({"action": "sculpt", "op": op, "target": target}):
+        return "Sculpting needs the HUD."
+    return SCULPT_SAY.get(op, "Done.").format(target=target)
+
+
+@tool("The hologram sculpting bench: simple shapes (cube, sphere, cylinder, cone, torus, pyramid) he stretches with "
+      "both hands. op 'new' (target = a shape) starts one; 'add' (target = shape) adds a piece; 'stretch' (target: "
+      "taller, shorter, wider, thinner, deeper, flatter, bigger, smaller); 'move' (target: up, down, left, right, "
+      "forward, back); 'turn' (target: left, right, over); 'remove' the selected piece; 'next' piece; 'select' "
+      "(target = shape); 'undo'. Save it with hologram_control save.",
+      {"op": {"type": "string", "enum": ["new", "add", "stretch", "move", "turn", "remove", "next", "select", "undo"]},
+       "target": S("A shape, size word or direction")}, ["op"])
+def sculpt_hologram(op, target=""):
+    return sculpt(op, target)
+
+
 @tool("List the holograms saved in his workspace.")
 def hologram_workspace():
     return workspace_list()

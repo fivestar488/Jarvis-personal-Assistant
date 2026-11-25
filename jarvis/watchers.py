@@ -207,7 +207,7 @@ def start():
       "(any real change to a page); 'price' (a page's price: alert when it drops, or reaches `below`; `text` = words "
       "just before the price if the page shows several); 'rss' (new items in a news feed, optionally only titles "
       "containing `text`); 'email' (new Gmail messages matching a Gmail search in `target`, e.g. "
-      "'from:amazon subject:shipped'). Use for 'tell me when...' or 'let me know if...' requests.",
+      "'from:amazon subject:shipped'). Use for 'tell me when...' or 'let me know if...' requests about web pages, prices, feeds or emails (for a download, program or file on this PC use tell_me_when).",
       {"kind": {"type": "string", "enum": list(DEFAULT_EVERY)},
        "target": S("The page or feed URL, or the Gmail search for kind 'email'"),
        "name": S("A short name for it, e.g. 'PS5 price'"),

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ask Jarvis</title>
+<style>
+  :root { --c: #3fc8ff; --hi: #cdf2ff; --bg: #04121c; --muted: #6390ab; --red: #ff5a4f; }
+  body { width: 340px; margin: 0; padding: 14px; background: var(--bg); color: var(--hi);
+         font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  h1 { margin: 0 0 10px; font-size: 13px; letter-spacing: .25em; color: var(--c); font-weight: 700; }
+  textarea, input { width: 100%; box-sizing: border-box; background: rgba(63,200,255,.06); color: var(--hi);
+                    border: 1px solid rgba(63,200,255,.35); border-radius: 4px; padding: 8px; font: inherit; }
+  textarea { height: 58px; resize: vertical; }
+  .row { display: flex; gap: 6px; margin-top: 8px; }
+  button { flex: 1; background: transparent; color: var(--c); border: 1px solid var(--c); border-radius: 4px;
+           padding: 7px 4px; font: 600 11px "Segoe UI", sans-serif; letter-spacing: .12em; cursor: pointer; }
+  button:hover { background: rgba(63,200,255,.12); }
+  button:disabled { opacity: .5; cursor: wait; }
+  label { display: flex; gap: 6px; align-items: center; margin-top: 8px; color: var(--muted); font-size: 12px; }
+  label input { width: auto; }
+  #out { margin-top: 12px; white-space: pre-wrap; min-height: 0; }
+  #out.err { color: var(--red); }
+  #setup p { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>J.A.R.V.I.S.</h1>
+  <div id="setup" hidden>
+    <p>First time: paste your Jarvis key. It's in the file <b>data\access_key.txt</b> in your Jarvis folder (or paste
+       the whole HUD link with <b>?key=</b> in it).</p>
+    <input id="key" placeholder="Your Jarvis key or link" autocomplete="off">
+    <div class="row"><button id="save">SAVE</button></div>
+  </div>
+  <div id="main" hidden>
+    <textarea id="q" placeholder="Ask about this page... (blank = summarise it)"></textarea>
+    <div class="row">
+      <button id="ask">ASK</button>
+      <button id="sum">SUMMARISE PAGE</button>
+      <button id="sel">SUMMARISE SELECTION</button>
+    </div>
+    <label><input type="checkbox" id="speak"> Jarvis reads the answer out loud</label>
+  </div>
+  <div id="out"></div>
+  <script src="shared.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

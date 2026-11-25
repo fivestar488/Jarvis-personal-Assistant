@@ -48,6 +48,11 @@ Jarvis's use and transfer of information received from Google APIs adheres to th
 - **Trip mode:** when you ask, Jarvis reads the subject lines and previews of travel emails (flights, hotels), with secrets hidden, so the AI model can find your trip dates. The trips are saved only on your PC.
 - **Offline wake word:** off unless you turn it on. It listens to your microphone for "Hey Jarvis" entirely on your PC; no audio is saved or sent anywhere.
 - **Point and ask:** a screenshot is taken only when you ask "what's this?", and it goes to the AI model to answer, like any screen question.
+- **Parcels and subscriptions:** Jarvis looks at the subject lines and previews of order, shipping, receipt and billing emails. Only ones he hasn't seen before go to the AI model, with secrets hidden, so it can list parcels and recurring payments. The lists are saved only on your PC. Turn each off with `JARVIS_PACKAGE_WATCH=off` / `JARVIS_SUBSCRIPTION_WATCH=off`.
+- **"Leave now" nudges:** for calendar events that have an address, the address (and your home address, if you set one) is sent to OpenStreetMap's Nominatim service to find it on the map. The two map points are sent to a public routing service (OSRM) to work out the travel time. Nothing else from the event is sent. Turn it off with `JARVIS_LEAVE_NUDGES=off`.
+- **Browser extension (optional):** when you ask about a page, its title, address and text (or the part you highlighted) go from your browser to Jarvis on your PC, then to the AI model with secrets hidden, to answer you. It only talks to Jarvis on your own PC.
+- **Daily notes:** saved as Markdown files in a folder on your PC (`Documents\Jarvis Daily Notes` by default).
+- **Setup doctor:** to check your API key and credit, it sends Anthropic one tiny request (the word "Hi"). Everything else it checks stays on your PC.
 - **Perimeter alerts:**
   - Jarvis reads Windows' own record of failed sign-ins.
   - It keeps a list of the devices your PC has seen on your Wi-Fi, without scanning the network.

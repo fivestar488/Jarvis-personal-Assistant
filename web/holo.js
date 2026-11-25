@@ -20,6 +20,7 @@ const Holo = (() => {
     object: "CLAP or SPREAD HANDS to pull it apart · PINCH a part for details · PINCH + DRAG to rotate · FLICK to dismiss",
     panel: "PINCH to press · CLAP to fan the cards out · BOTH HANDS PINCH to zoom · FLICK to dismiss",
     scan: "CLAP or SPREAD HANDS to break it down in 3D · FLICK to dismiss",
+    sculpt: "BOTH HANDS PINCH + PULL to stretch · PINCH + DRAG to turn · PINCH a piece to pick it · CLAP for the next piece",
   };
 
   // ---------- page elements (built on first use) ----------
@@ -212,7 +213,7 @@ const Holo = (() => {
     isOpen = true;
     el.box.hidden = false;
     el.box.className = "show kind-" + kind;
-    el.kind.textContent = { topic: "ANALYSIS", object: "3D MODEL", panel: "EXPANDED VIEW", scan: "DESK SCANNER", data: "DATA VIEW" }[kind];
+    el.kind.textContent = { topic: "ANALYSIS", object: "3D MODEL", panel: "EXPANDED VIEW", scan: "DESK SCANNER", data: "DATA VIEW", sculpt: "WORKSHOP" }[kind];
     el.title.textContent = subject;
     el.path.textContent = "";
     el.hint.textContent = HINTS[kind];
@@ -243,6 +244,7 @@ const Holo = (() => {
     else if (kind === "object") buildObject(subject, saved);
     else if (kind === "data") buildObject("data", saved);
     else if (kind === "topic") buildTopic(subject, parts, saved.tree);
+    else if (kind === "sculpt") buildSculpt(saved);
   }
   let openCount = 0;
 
@@ -256,6 +258,7 @@ const Holo = (() => {
     }
     if (current.kind === "data") Object.assign(s, { bars: model.bars, unit: model.unit });
     if (model?.arcs) s.arcs = model.arcs;
+    if (model?.kind === "sculpt") s.shapes = model.parts.map(shapeSpec);
     if (model?.kind === "scan") {
       s.image = el.sheet.querySelector(".scan-photo img")?.src;
       s.result = model.result;
@@ -665,6 +668,166 @@ const Holo = (() => {
     ctl.tz = 0.9;
   }
 
+  // ================= SCULPT: simple shapes you stretch and turn with your hands =================
+  // Both hands pinching: pull apart sideways to widen the picked piece, up and down to make it taller. Pinch and
+  // drag with one hand to turn the whole sculpture; pinch a piece to pick it. Voice does the rest ("add a sphere",
+  // "make it taller", "move it up", "save it as rocket").
+  const SHAPES = {
+    cube: () => new THREE.BoxGeometry(1.6, 1.6, 1.6),
+    sphere: () => new THREE.SphereGeometry(1, 22, 16),
+    cylinder: () => new THREE.CylinderGeometry(0.8, 0.8, 1.8, 28),
+    cone: () => new THREE.ConeGeometry(0.95, 1.9, 28),
+    torus: () => new THREE.TorusGeometry(0.9, 0.3, 12, 36),
+    pyramid: () => new THREE.ConeGeometry(1.15, 1.7, 4),
+  };
+  const ROUND = new Set(["sphere", "torus"]);
+  const MAX_PIECES = 8;
+
+  function buildSculpt(saved = {}) {
+    const group = new THREE.Group();
+    R.content.add(group);
+    model = { kind: "sculpt", group, parts: [], pickables: [], active: null, history: [] };
+    const restoring = !!saved.shapes?.length;
+    (restoring ? saved.shapes : [{ type: "cube" }]).slice(0, MAX_PIECES).forEach((sh) => addShape(sh, restoring));
+    selectShape(model.parts[model.parts.length - 1], true);
+    centre();
+    model.update = (t) => {
+      for (const p of model.parts) p.edge.material.opacity = p === model.active ? 0.75 + Math.sin(t * 5) * 0.2 : 0.55;
+    };
+    Object.assign(ctl, { spin: false, tz: 0.85 });
+  }
+
+  function addShape(sh, restoring) {
+    if (model.parts.length >= MAX_PIECES) { showInfo("Bench full", `Up to ${MAX_PIECES} pieces. Remove one first.`); return null; }
+    const type = SHAPES[sh.type] ? sh.type : "cube";
+    const obj = shape(SHAPES[type](), css("--cyan"), { fill: 0.12, edges: 0.75, wire: ROUND.has(type) });
+    if (sh.pos) obj.position.fromArray(sh.pos);
+    else if (model.active) obj.position.copy(model.active.obj.position).add(new THREE.Vector3(0, 1.7, 0));  // on top
+    if (sh.scale) obj.scale.fromArray(sh.scale);
+    if (sh.rot) obj.rotation.set(sh.rot[0] || 0, sh.rot[1] || 0, sh.rot[2] || 0);
+    model.group.add(obj);
+    const p = { obj, type, name: type, fill: obj.children[0], edge: obj.children[1] };
+    obj.userData.item = p;
+    model.parts.push(p);
+    model.pickables.push(obj);
+    if (!restoring) {  // pops in (finished at once if you change it before the animation ends: see settle)
+      p.pop = obj.scale.clone();
+      obj.scale.setScalar(0.01);
+      tween(500, (k) => { if (p.pop) obj.scale.copy(p.pop).multiplyScalar(Math.max(0.01, easeBack(k))); }, () => settle(p));
+      selectShape(p);
+      centre();
+    }
+    return p;
+  }
+  function settle(p) { if (p.pop) { p.obj.scale.copy(p.pop); p.pop = null; } }
+
+  function selectShape(p, quiet) {
+    if (!p) return;
+    model.active = p;
+    const c = css("--cyan"), a = css("--amber");
+    for (const q of model.parts) {
+      q.edge.material.color.set(q === p ? a : c);
+      q.fill.material.color.set(q === p ? a : c);
+      q.fill.material.opacity = q === p ? 0.2 : 0.1;
+    }
+    sculptInfo();
+    if (!quiet) beep(1100, 0.04);
+  }
+
+  function sculptInfo() {
+    const p = model?.active;
+    if (!p) return showInfo("Empty bench", "Say 'add a cube'.");
+    const s = p.obj.scale, i = model.parts.indexOf(p) + 1;
+    showInfo(`${p.type} · piece ${i} of ${model.parts.length}`,
+      `Width ${s.x.toFixed(2)}× · height ${s.y.toFixed(2)}× · depth ${s.z.toFixed(2)}×`);
+  }
+
+  function centre() {  // keep the whole sculpture in the middle of the view
+    const box = new THREE.Box3().setFromObject(model.group);
+    if (!box.isEmpty()) box.getCenter(R.focus);
+  }
+
+  function shapeSpec(p) {
+    const r = p.obj.rotation, round = (v) => Math.round(v * 1000) / 1000;
+    return { type: p.type, pos: p.obj.position.toArray().map(round), scale: (p.pop || p.obj.scale).toArray().map(round),
+             rot: [round(r.x), round(r.y), round(r.z)] };
+  }
+
+  function remember() {  // for "undo"
+    model.history.push(model.parts.map(shapeSpec));
+    if (model.history.length > 20) model.history.shift();
+  }
+
+  const STRETCH = { taller: [1, 1.25], longer: [1, 1.25], shorter: [1, 0.8], wider: [0, 1.25], thinner: [0, 0.8],
+                    narrower: [0, 0.8], deeper: [2, 1.25], flatter: [1, 0.8], bigger: [-1, 1.2], smaller: [-1, 0.83] };
+  const MOVES = { up: [0, 0.5, 0], down: [0, -0.5, 0], left: [-0.5, 0, 0], right: [0.5, 0, 0], forward: [0, 0, 0.5], back: [0, 0, -0.5] };
+
+  function sculptAction(op, target) {
+    if (model?.kind !== "sculpt") return;
+    model.parts.forEach(settle);
+    const p = model.active, t = (target || "").toLowerCase();
+    if (op === "undo") {
+      const last = model.history.pop();
+      if (!last) { showInfo("Nothing to undo", ""); return; }
+      for (const q of model.parts) dispose(q.obj);
+      model.parts = []; model.pickables = []; model.active = null;
+      last.forEach((sh) => addShape(sh, true));
+      selectShape(model.parts[model.parts.length - 1], true);
+      centre();
+      beep(520, 0.06);
+      return;
+    }
+    if (op === "add") { remember(); if (!addShape({ type: t })) model.history.pop(); return; }
+    if (!p) return;
+    if (op === "next") { selectShape(model.parts[(model.parts.indexOf(p) + 1) % model.parts.length]); return; }
+    if (op === "select") { const q = model.parts.find((x) => x.type === t); if (q) selectShape(q); return; }
+    remember();
+    if (op === "remove") {
+      if (model.parts.length === 1) { model.history.pop(); showInfo("Last piece", "Add another before removing this one."); return; }
+      const i = model.parts.indexOf(p);
+      model.parts.splice(i, 1);
+      model.pickables.splice(model.pickables.indexOf(p.obj), 1);
+      dispose(p.obj);
+      selectShape(model.parts[Math.max(0, i - 1)]);
+      centre();
+      beep(440, 0.08);
+      return;
+    }
+    if (op === "stretch" && STRETCH[t]) {
+      const [axis, k] = STRETCH[t], s = p.obj.scale, from = s.clone(), to = s.clone();
+      if (axis < 0) to.multiplyScalar(k);
+      else to.setComponent(axis, from.getComponent(axis) * k);
+      to.set(clamp(to.x, 0.15, 5), clamp(to.y, 0.15, 5), clamp(to.z, 0.15, 5));
+      tween(300, (e) => { s.lerpVectors(from, to, ease(e)); sculptInfo(); });
+    } else if (op === "move" && MOVES[t]) {
+      const from = p.obj.position.clone(), to = from.clone().add(new THREE.Vector3(...MOVES[t]));
+      tween(300, (e) => p.obj.position.lerpVectors(from, to, ease(e)), centre);
+    } else if (op === "turn") {
+      const axis = t === "over" ? "x" : "y", from = p.obj.rotation[axis];
+      const to = from + (t === "left" ? -1 : 1) * Math.PI / 4;
+      tween(350, (e) => { p.obj.rotation[axis] = from + (to - from) * ease(e); });
+    } else { model.history.pop(); return; }
+    beep(880, 0.05);
+  }
+
+  // Both hands pinching: the gap between them, sideways and up-down, sets the piece's width and height
+  function stretchByHands(a, b) {
+    const o = model.active.obj, dx = Math.abs(a.cx - b.cx), dy = Math.abs(a.cy - b.cy), MIN = 60;
+    if (!hand.stretch) {
+      settle(model.active);
+      remember();
+      hand.stretch = { dx: Math.max(MIN, dx), dy: Math.max(MIN, dy), s: o.scale.clone() };
+      beep(700, 0.04);
+      return;
+    }
+    const st = hand.stretch;
+    o.scale.x = clamp(st.s.x * Math.max(MIN, dx) / st.dx, 0.15, 5);
+    o.scale.y = clamp(st.s.y * Math.max(MIN, dy) / st.dy, 0.15, 5);
+    sculptInfo();
+  }
+  function endStretch() { hand.stretch = null; if (model?.kind === "sculpt") { centre(); beep(990, 0.04); } }
+
+
   function buildSolar(group, c, hi, a) {
     const sun = shape(new THREE.SphereGeometry(0.75, 20, 14), a, { fill: 0.35, edges: 0.6, wire: true });
     part(group, sun, "Sun", "A star 109 times wider than Earth. It holds 99.8% of the solar system's mass.", null, a, new THREE.Vector3(0, -1.1, 0));
@@ -954,6 +1117,8 @@ const Holo = (() => {
     } else if (model?.kind === "panel") {
       el.sheet.classList.toggle("spread");
       beep(880, 0.08);
+    } else if (model?.kind === "sculpt") {
+      sculptAction(target ? "select" : "next", target);
     } else if (model?.kind === "scan") {  // break the scanned object down into a 3D map of its parts
       const name = model.result?.name;
       if (name && !/^(nothing|scan failed)/i.test(name)) open("topic", name);
@@ -979,6 +1144,7 @@ const Holo = (() => {
         if (item === model.selected) expandNode(item);
         else select(item);
       } else if (model.kind === "object") selectPart(item);
+      else if (model.kind === "sculpt") selectShape(item);
       return;
     }
     // On the normal HUD: press buttons, or open a panel as a hologram
@@ -1189,6 +1355,10 @@ const Holo = (() => {
       const apart = Math.hypot(a.m.palm.x - b.m.palm.x, a.m.palm.y - b.m.palm.y) / size;
       hand.history.push({ t: now, apart, open: a.m.open && b.m.open });
       while (hand.history.length && now - hand.history[0].t > 900) hand.history.shift();
+      if (a.pinch && b.pinch && model?.kind === "sculpt" && model.active) {  // sculpting: pull to stretch the piece
+        stretchByHands(a, b);
+        return;
+      }
       if (a.pinch && b.pinch) {  // both hands pinching: stretch to zoom
         const d = Math.hypot(a.cx - b.cx, a.cy - b.cy);
         if (!hand.zoom) hand.zoom = { d, z: ctl.tz };
@@ -1196,6 +1366,7 @@ const Holo = (() => {
         return;
       }
       hand.zoom = null;
+      if (hand.stretch) endStretch();
       // Clap: hands were apart a moment ago and have just met
       const wasApart = hand.history.some((h) => now - h.t < 500 && h.apart > 2.4);
       if (apart < 1.1 && wasApart) return gesture("clap");
@@ -1205,6 +1376,7 @@ const Holo = (() => {
       return;
     }
     hand.zoom = null;
+    if (hand.stretch) endStretch();
     // Two hands that were closing in fast merged into one blob: that was a clap too
     if (before === 2 && count === 1) {
       const recent = hand.history.filter((h) => now - h.t < 250);
@@ -1302,6 +1474,7 @@ const Holo = (() => {
         open(ev.kind, ev.subject, ev.parts, ev.image, ev);
         break;
       case "scan_result": fillScan(ev.result || {}); break;
+      case "sculpt": sculptAction(ev.op, ev.target); break;
       case "wireframe": case "xray": case "solid": restyle(ev.action); break;
       case "color": restyle("color", COLORS[(ev.target || "").toLowerCase()] || ev.target || "#3fc8ff"); break;
       case "save": { const s = spec(); if (s && isMainScreen()) send({ type: "holo_save", name: ev.target || "", spec: s }); break; }

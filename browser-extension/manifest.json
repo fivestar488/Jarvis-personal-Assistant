@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "JARVIS for your browser",
+  "version": "1.0",
+  "description": "Ask Jarvis about the page you're on, or summarise what you've highlighted. Talks only to Jarvis on this PC.",
+  "icons": { "128": "icon.png" },
+  "action": { "default_popup": "popup.html", "default_title": "Ask Jarvis about this page", "default_icon": "icon.png" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "commands": {
+    "_execute_action": { "suggested_key": { "default": "Alt+J" }, "description": "Ask Jarvis about this page" }
+  }
+}

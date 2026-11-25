@@ -130,6 +130,21 @@ PERIMETER = (os.getenv("JARVIS_PERIMETER") or "on").strip().lower() != "off"
 WAKE_WORD = (os.getenv("JARVIS_WAKE_WORD") or "off").strip().lower() == "on"
 # Always-visible status strip in the corner of the screen (also "status strip on/off")
 STATUS_STRIP = (os.getenv("JARVIS_STATUS_STRIP") or "off").strip().lower() == "on"
+# Voice that fits the moment: quieter late at night, brisker for alerts, warmer for good news
+VOICE_TONE = (os.getenv("JARVIS_VOICE_TONE") or "on").strip().lower() != "off"
+# Instant replies: a short "Right away, sir" / "One moment, sir" the moment a command arrives, instead of always the
+# thinking phrase. off = always JARVIS_THINKING_PHRASE.
+QUICK_ACKS = (os.getenv("JARVIS_QUICK_ACKS") or "on").strip().lower() != "off"
+# Package tracker and subscription radar: check Gmail for new shipping emails / receipts in the background
+PACKAGE_WATCH = (os.getenv("JARVIS_PACKAGE_WATCH") or "on").strip().lower() != "off"
+SUBSCRIPTION_WATCH = (os.getenv("JARVIS_SUBSCRIPTION_WATCH") or "on").strip().lower() != "off"
+# "Leave now" nudges for calendar events with an address. HOME_ADDRESS blank = your rough location from the internet.
+LEAVE_NUDGES = (os.getenv("JARVIS_LEAVE_NUDGES") or "on").strip().lower() != "off"
+HOME_ADDRESS = os.getenv("JARVIS_HOME_ADDRESS", "").strip()
+TRAVEL_MODE = (os.getenv("JARVIS_TRAVEL_MODE") or "driving").strip().lower()  # driving, walking or cycling
+LEAVE_BUFFER_MINUTES = int(os.getenv("JARVIS_LEAVE_BUFFER_MINUTES") or 10)
+# Daily notes ("capture: ...") go into one Markdown file a day here (Obsidian can open the folder)
+DAILY_NOTES_FOLDER = os.getenv("JARVIS_DAILY_NOTES_FOLDER", "~/Documents/Jarvis Daily Notes").strip()
 
 # Seconds Jarvis keeps listening for a follow-up after answering, without needing the wake word again.
 FOLLOW_UP_SECONDS = float(os.getenv("JARVIS_FOLLOW_UP_SECONDS", "6"))

@@ -50,15 +50,51 @@ class SentenceSplitter:
 
 _spoken_cache = {}  # short phrases he says often ("Paused.", "Done.") -> their audio, so they play instantly
 
+# A voice that fits the moment. The free Edge voices don't take speaking styles (whispering, cheerful), so each tone
+# is a change of speed (%), volume (%) and pitch (Hz) on top of your JARVIS_VOICE_RATE / _PITCH.
+TONES = {
+    "night": (-6, -35, -2),   # late at night: slower and much quieter
+    "alert": (12, 0, 1),      # warnings: brisk
+    "warm": (-3, 0, 2),       # good news: a touch slower and brighter
+}
+GOOD_NEWS = re.compile(r"\b(congratulations|good news|great news|well done|happy birthday|splendid|excellent news|"
+                       r"you did it|nicely done|delivered)\b", re.I)
 
-async def synthesize(text):
-    """Text -> MP3 bytes in Jarvis's voice."""
+
+def tone_for(text, level=None):
+    """Which tone to use: an alert's level, else the time of day, else the words themselves. None = normal."""
+    if not config.VOICE_TONE:
+        return None
+    import datetime as dt
+    if level in ("warning", "critical"):
+        return "alert"
+    hour = dt.datetime.now().hour
+    if hour >= 23 or hour < 6:
+        return "night"
+    if GOOD_NEWS.search(text or ""):
+        return "warm"
+    return None
+
+
+def _shift(base, delta, unit):
+    m = re.fullmatch(r"([+-]?\d+)" + unit, (base or f"+0{unit}").strip())
+    value = (int(m.group(1)) if m else 0) + delta
+    return f"{value:+d}{unit}"
+
+
+async def synthesize(text, tone="auto", level=None):
+    """Text -> MP3 bytes in Jarvis's voice. tone: 'auto' (see tone_for), None, or a name from TONES."""
     import edge_tts
-    key = (speakable(text), config.VOICE, config.VOICE_RATE, config.VOICE_PITCH)
+    if tone == "auto":
+        tone = tone_for(text, level)
+    rate_d, volume_d, pitch_d = TONES.get(tone, (0, 0, 0))
+    rate, volume = _shift(config.VOICE_RATE, rate_d, "%"), _shift("+0%", volume_d, "%")
+    pitch = _shift(config.VOICE_PITCH, pitch_d, "Hz")
+    key = (speakable(text), config.VOICE, rate, volume, pitch)
     if key in _spoken_cache:
         return _spoken_cache[key]
     audio = bytearray()
-    async for chunk in edge_tts.Communicate(key[0], config.VOICE, rate=config.VOICE_RATE, pitch=config.VOICE_PITCH).stream():
+    async for chunk in edge_tts.Communicate(key[0], config.VOICE, rate=rate, volume=volume, pitch=pitch).stream():
         if chunk["type"] == "audio":
             audio.extend(chunk["data"])
     audio = bytes(audio)
