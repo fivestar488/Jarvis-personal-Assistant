@@ -728,3 +728,11 @@ body.mood .hud, body.mood .topbar, body.mood .ticker, body.mood .console { filte
 #holo-video .hv-frame { position: relative; aspect-ratio: 16 / 9; }
 #holo-video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 @media (max-width: 700px) { #holo-video { right: 16px; bottom: 150px; } }
+
+/* Situation board: each card coloured by its threat level */
+.hc.sit.lvl-caution { border-color: #ffb347; }
+.hc.sit.lvl-caution .mid { color: #ffb347; text-shadow: 0 0 12px rgba(255, 179, 71, .6); }
+.hc.sit.lvl-warning { border-color: #ff8a3d; }
+.hc.sit.lvl-warning .mid { color: #ff8a3d; text-shadow: 0 0 12px rgba(255, 138, 61, .6); }
+.hc.sit.lvl-critical { border-color: #ff4b3a; background: rgba(255, 60, 40, .1); }
+.hc.sit.lvl-critical .mid { color: #ff4b3a; }

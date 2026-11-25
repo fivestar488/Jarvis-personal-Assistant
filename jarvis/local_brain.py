@@ -26,6 +26,17 @@ TOOL_GROUPS = [
     (r"\bmeeting (mode|notes|minutes|summary)|(start|end|stop) (the |a )?meeting", ["meeting_mode"]),
     (r"\b(meal|calorie|calories|protein|lunch|dinner|breakfast|snack)\b", ["log_meal", "meals_today"]),
     (r"\bcredits?\b|how much .*cost|minimum .*(start|claude)", ["credit_estimate"]),
+    (r"what'?s (this|that)|read (this|that)|explain (this|that)", ["whats_this"]),
+    (r"show me my|my (week|inbox|spending|calories)", ["show_my_data"]),
+    (r"situation|sitrep|threat", ["situation_report"]),
+    (r"simulat|what if", ["run_simulation"]),
+    (r"\btrip\b|flight|travel|holiday|vacation", ["trip"]),
+    (r"game mode|do not disturb|\bdnd\b", ["game_mode"]),
+    (r"break remind|eye break", ["break_reminders"]),
+    (r"standing order|every (day|weekday|morning)|when (my battery|i open)", ["standing_orders"]),
+    (r"wake word", ["offline_wake_word"]),
+    (r"status (strip|bar)", ["status_strip"]),
+    (r"flash ?cards?|quiz me|teach me|vocabulary", ["flashcards"]),
     (r"status|damage report|diagnostic|sweep|how.*(systems|pc|computer) (doing|looking)", ["status_report"]),
     (r"protocol", ["run_protocol"]),
     (r"mood|movie mode|lights (down|up)", ["mood_mode"]),
@@ -78,7 +89,9 @@ SAY_RESULT = {"set_reminder", "cancel_reminder", "acknowledge_reminder", "open_a
               "set_low_power", "set_listening_paused", "set_captions", "meeting_mode", "log_meal",
               "meals_today", "credit_estimate", "status_report", "run_protocol", "mood_mode", "tile_windows",
               "perimeter_report", "ask_my_files", "index_my_files", "activity_journal", "wrap_up", "clipboard_history",
-              "show_video", "hologram_workspace"}
+              "show_video", "hologram_workspace", "whats_this", "show_my_data", "situation_report", "run_simulation",
+              "trip", "game_mode", "break_reminders", "standing_orders", "offline_wake_word", "status_strip",
+              "flashcards"}
 MAX_TOOLS = 3           # every tool description costs a laptop CPU seconds to read
 MEMORY_FACTS = 8
 # Earlier exchanges sent back each time. Trimmed in one go (down to KEEP) rather than one by one: Ollama

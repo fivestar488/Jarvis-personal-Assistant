@@ -217,6 +217,24 @@ Point a webcam down at a mat or your desk (a cheap USB webcam on a clip or stand
 - **Mood mode:** "mood mode" or "lights down" switches Windows to dark mode, dims the screen, turns the HUD blue and optionally plays music (`JARVIS_MOOD_MUSIC`). "Lights up" puts it all back.
 - **Windows by voice:** "put Chrome on the left and Spotify on the right", "maximise Word".
 
+## Wave three
+
+- **Your data as holograms:** "show me my week" (the next 7 days, each day bursting into its events), "show me my inbox" (unread mail grouped by sender), "show me my spending" or "my calories" (3D bars for 14 days; a clap pulls out the biggest day).
+- **Situation report / threat assessment:** weather today and tomorrow, alarming headlines (local ones count more) and your next event, rated nominal to critical, shown as a panel.
+- **Point and ask:** put the mouse on anything and say "what's this?" or "read that". Jarvis looks at a close-up of the spot under the pointer.
+- **"Run the simulation":** "simulate my week if I take Friday off". It's checked against your calendar, reminders and spending, with odds and a recommendation.
+- **Trip mode:**
+  - "Scan my email for trips" finds flight and hotel confirmations.
+  - "Trip mode" puts your next trip on the globe as an arc from home, with a countdown, destination weather, a packing list and a check-in reminder.
+  - "Add a trip to Rome on 20 December" adds one by hand.
+- **Game mode / do not disturb:** switches on by itself during full-screen games and video calls. Only critical alerts get through, and you get a recap afterwards.
+- **Standing orders:** "every weekday at 8, initiate focus protocol", "when my battery drops below 20 percent, low power mode", "when I open Steam, game mode on". "List my standing orders", "cancel standing order 2".
+- **Banter callbacks:** Jarvis keeps a small tally of the day (coffees, how often you've asked for the weather) and may bring it up: "Third coffee today, sir."
+- **Status strip:** "status strip on" shows a slim bar in the top-right corner with battery, internet, spend, do-not-disturb and your next event.
+- **Offline "Hey Jarvis":** "offline wake word on" runs a tiny detector on your PC (about 4 MB, downloaded once, roughly a tenth of one CPU core). Say "Hey Jarvis" and the HUD starts listening.
+- **Flashcard tutor:** "teach me Spanish", "make flashcards on the French Revolution" or "quiz me on my notes". "Quiz me" asks 5 due cards out loud and marks your spoken answers. Cards you know come back less often.
+- **Break reminders:** "break reminders on" gives a 20-20-20 eye break every 20 minutes of screen time and water every 90 minutes. They're paused during games and when you're away.
+
 ## Even more features
 
 - **Ask my files:** "what does my lease say about pets?". Jarvis keeps a private search index of your Documents and Desktop (text, notes, code, PDFs, Word files) on your PC. Only the few best passages go to the AI. Files stored only in OneDrive's cloud are skipped. "Index my files" refreshes it.

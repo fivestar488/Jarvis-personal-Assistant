@@ -26,8 +26,11 @@ def alert(title, message, image_path=None, speak=True, ack=None, level="caution"
     ack: the id of a repeating reminder, so the HUD and Telegram show a "Got it" button that stops it.
     level: note (just mentioned), caution, warning or critical (loudest, and repeats its sound in the HUD).
     A note isn't sent to the phone unless phone=True is forced."""
-    from . import tools
+    from . import focus, tools
     level = level if level in LEVELS else "caution"
+    if level != "critical" and title != "While you were busy" and focus.quiet():
+        focus.hold(title, message, level)  # game mode / a call: saved for the recap afterwards
+        return
     if speak and tools.ui:
         try:
             tools.ui.announce(message, ack=ack, level=level)

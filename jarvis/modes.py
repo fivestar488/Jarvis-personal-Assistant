@@ -42,6 +42,12 @@ def set_listening_paused(paused):
     return pause_listening(paused)
 
 
+@tool("Turn the status strip on or off: a slim always-on-top bar in the top-right corner with battery, internet, "
+      "today's spend, do-not-disturb and the next event.", {"on": {"type": "boolean"}}, ["on"])
+def status_strip(on):
+    return captions.set_strip(on)
+
+
 @tool("Turn live captions on or off: what Jarvis says shown at the bottom of the screen, over every app.",
       {"on": {"type": "boolean"}}, ["on"])
 def set_captions(on):

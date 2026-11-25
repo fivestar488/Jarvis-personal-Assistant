@@ -18,9 +18,9 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import (briefing, captions, cliphistory, config, email_watch, feeds, filesearch, google_tools, hologram, journal,
-               meetings, memory_tidy, minutes, network, notify, perimeter, security, spend, suggestions, telegram_bot,
-               tools, undo, vitals, watchers, wrap)
+from . import (briefing, captions, cliphistory, config, email_watch, feeds, filesearch, focus, google_tools, hologram,
+               journal, meetings, memory_tidy, minutes, network, notify, perimeter, security, spend, standing,
+               suggestions, telegram_bot, tools, undo, vitals, wakeword, watchers, wrap)
 from .brain import Brain
 from .voice import SentenceSplitter, synthesize, transcribe_pcm, warm_whisper
 
@@ -42,7 +42,11 @@ async def lifespan(_app):
     memory_tidy.start()
     suggestions.deliver, suggestions.on_done = show_suggestion, suggestion_done
     suggestions.start()
-    for job in (vitals, perimeter, filesearch, journal, wrap, cliphistory):  # each watches or tidies in the background
+    standing.run_command = lambda text: from_thread(handle_message(text, origin="standing")).result(timeout=900)
+    wakeword.on_wake = summon  # "Hey Jarvis" works like the hotkey: the HUD starts listening
+    if captions.strip_on():
+        captions.start_strip()
+    for job in (vitals, perimeter, filesearch, journal, wrap, cliphistory, focus, standing, wakeword):
         try:
             job.start()
         except Exception as e:

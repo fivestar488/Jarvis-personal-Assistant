@@ -212,7 +212,7 @@ const Holo = (() => {
     isOpen = true;
     el.box.hidden = false;
     el.box.className = "show kind-" + kind;
-    el.kind.textContent = { topic: "ANALYSIS", object: "3D MODEL", panel: "EXPANDED VIEW", scan: "DESK SCANNER" }[kind];
+    el.kind.textContent = { topic: "ANALYSIS", object: "3D MODEL", panel: "EXPANDED VIEW", scan: "DESK SCANNER", data: "DATA VIEW" }[kind];
     el.title.textContent = subject;
     el.path.textContent = "";
     el.hint.textContent = HINTS[kind];
@@ -240,7 +240,8 @@ const Holo = (() => {
     }
     if (token !== openCount) return;
     if (kind === "panel") await buildPanel(subject);
-    else if (kind === "object") buildObject(subject);
+    else if (kind === "object") buildObject(subject, saved);
+    else if (kind === "data") buildObject("data", saved);
     else if (kind === "topic") buildTopic(subject, parts, saved.tree);
   }
   let openCount = 0;
@@ -253,6 +254,8 @@ const Holo = (() => {
       const ser = (n) => ({ name: n.name, detail: n.detail, children: n.children.map(ser) });
       s.tree = ser(model.root);
     }
+    if (current.kind === "data") Object.assign(s, { bars: model.bars, unit: model.unit });
+    if (model?.arcs) s.arcs = model.arcs;
     if (model?.kind === "scan") {
       s.image = el.sheet.querySelector(".scan-photo img")?.src;
       s.result = model.result;
@@ -508,13 +511,14 @@ const Holo = (() => {
   // ================= OBJECTS: built-in 3D models that come apart =================
   const OBJECTS = {
     "globe": buildGlobe, "solar system": buildSolar, "atom": buildAtom, "dna": buildDNA, "jet engine": buildEngine,
+    "data": buildBars,
   };
 
-  function buildObject(name) {
+  function buildObject(name, saved = {}) {
     const group = new THREE.Group();
     R.content.add(group);
     model = { kind: "object", group, parts: [], pickables: [], explode: 0, explodeTo: 0, spins: [] };
-    (OBJECTS[name] || buildGlobe)(group, css("--cyan"), css("--cyan-hi"), css("--amber"));
+    (OBJECTS[name] || buildGlobe)(group, css("--cyan"), css("--cyan-hi"), css("--amber"), saved);
     model.update = (t, dt) => {
       model.explode += (model.explodeTo - model.explode) * Math.min(1, dt * 3.5);
       const e = ease(model.explode);
@@ -547,6 +551,7 @@ const Holo = (() => {
   function toggleExplode(force) {
     if (!model || model.kind !== "object") return;
     model.explodeTo = force ?? (model.explodeTo > 0.5 ? 0 : 1);
+    if (model.explodeTo && model.onExplode) { model.onExplode(); return; }
     beep(model.explodeTo ? 880 : 440, 0.08);
     showInfo(model.explodeTo ? "Pulled apart" : "Assembled", model.explodeTo ? "Pinch a part for details. Clap again to put it back together." : "");
   }
@@ -557,7 +562,7 @@ const Holo = (() => {
     beep(1100, 0.04);
   }
 
-  function buildGlobe(group, c, hi, a) {
+  function buildGlobe(group, c, hi, a, saved = {}) {
     const layers = [
       ["Crust", "The thin rocky shell we live on: 5 to 70 km thick.", 2, c, -3.8],
       ["Mantle", "Hot rock that flows very slowly, about 2,900 km deep.", 1.55, a, 0],
@@ -571,6 +576,7 @@ const Holo = (() => {
       part(group, obj, name, detail, new THREE.Vector3(x, 0, 0), color, new THREE.Vector3(0, -(r + 0.35), 0));
       model.spins.push([obj, "y", 0.15 + i * 0.1]);
     });
+    if (saved.arcs?.length) drawArcs(group.children[0], saved.arcs, a, hi);
     // Where you are, with the current weather (from the HUD's weather feed)
     api("/api/weather").then((r) => r.ok && r.json()).then((w) => {
       if (!w || model?.parts[0]?.obj !== group.children[0]) return;
@@ -584,6 +590,79 @@ const Holo = (() => {
       tag.position.copy(pos.clone().multiplyScalar(1.45));
       group.children[0].add(pin, beam, tag);
     }).catch(() => {});
+  }
+
+  // Trip arcs: from home to the destination, lifted off the surface, with a dot travelling along
+  function drawArcs(crust, arcs, a, hi) {
+    const at = (p) => {
+      const la = THREE.MathUtils.degToRad(p.lat), lo = THREE.MathUtils.degToRad(p.lon);
+      return new THREE.Vector3(Math.cos(la) * Math.cos(lo), Math.sin(la), -Math.cos(la) * Math.sin(lo));
+    };
+    model.arcs = arcs;
+    const dots = [];
+    for (const arc of arcs) {
+      const A = at(arc.from), B = at(arc.to), pts = [];
+      for (let i = 0; i <= 64; i++) {
+        const t = i / 64;
+        pts.push(A.clone().lerp(B, t).normalize().multiplyScalar(2.03 + Math.sin(Math.PI * t) * 0.9));
+      }
+      crust.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 64, 0.035, 6, false), M.glow(hi, 1)));
+      for (const [p, name] of [[A, arc.from.name], [B, arc.to.name]]) {
+        const pin = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), M.glow(hi, 0.95));
+        pin.position.copy(p.clone().multiplyScalar(2.03));
+        const tag = label(name || "", hi, 0.26);
+        tag.position.copy(p.clone().multiplyScalar(2.45));
+        crust.add(pin, tag);
+      }
+      const mid = label(arc.label || "", a, 0.24);
+      mid.position.copy(pts[32].clone().multiplyScalar(1.12));
+      crust.add(mid);
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), M.glow(a, 1));
+      crust.add(dot);
+      dots.push([dot, pts]);
+      const midLon = Math.atan2(-(A.z + B.z), A.x + B.x);  // turn the globe so the trip faces you
+      crust.rotation.y = -Math.PI / 2 - midLon;
+      const midLat = Math.asin(Math.max(-1, Math.min(1, (A.y + B.y) / Math.max(1e-6, A.clone().add(B).length()))));
+      Object.assign(ctl, { tx: midLat, tz: 1.8, spin: false });  // zoom in and tilt onto the route
+    }
+    model.spins = model.spins.filter((s) => s[0] !== crust);
+    const prev = model.tick;
+    model.tick = (t, dt, e) => {
+      prev?.(t, dt, e);
+      for (const [dot, pts] of dots) dot.position.copy(pts[Math.floor(t * 14) % pts.length]);
+    };
+  }
+
+  // Data views: 3D bars in an arc (spend, calories); a clap pulls the biggest one out
+  function buildBars(group, c, hi, a, saved = {}) {
+    const bars = saved.bars || [], unit = saved.unit || "";
+    const max = Math.max(1e-9, ...bars.map((b) => b.value));
+    const fmt = (v) => (unit === "$" ? `$${v.toFixed(2)}` : `${Math.round(v)} ${unit}`);
+    model.bars = bars;
+    model.unit = unit;
+    let biggest = null;
+    bars.forEach((b, i) => {
+      const ang = (i / Math.max(1, bars.length - 1) - 0.5) * Math.PI * 0.85;
+      const h = Math.max(0.06, (b.value / max) * 3.2), top = b.value === max && b.value > 0;
+      const geo = new THREE.BoxGeometry(0.34, h, 0.34);
+      geo.translate(0, h / 2, 0);
+      const bar = shape(geo, top ? a : c, { fill: 0.28, edges: 0.85 });
+      bar.position.set(Math.sin(ang) * 4.4, -2.1, 1.2 - Math.cos(ang) * 2.6);
+      const day = label(b.label, c, 0.17);
+      day.position.set(0, -0.28, 0);
+      bar.add(day);
+      const val = label(fmt(b.value), top ? a : hi, 0.2);
+      val.position.set(0, h + 0.3, 0);
+      bar.add(val);
+      const p = part(group, bar, b.label, fmt(b.value), top ? new THREE.Vector3(0, 0.8, 1.6) : new THREE.Vector3());
+      if (top) biggest = p;
+      bar.scale.y = 0.01;
+      setTimeout(() => tween(650, (k) => { bar.scale.y = Math.max(0.01, easeBack(k)); }), 200 + i * 45);
+    });
+    const total = bars.reduce((sum, b) => sum + b.value, 0);
+    showInfo(saved.title || "Data", `Total ${fmt(total)}. Clap to pull out the biggest day.`);
+    model.onExplode = () => { if (biggest) selectPart(biggest); };
+    ctl.tz = 0.9;
   }
 
   function buildSolar(group, c, hi, a) {
@@ -788,6 +867,10 @@ const Holo = (() => {
           card(`<div class="mid">⏮</div><p>Previous</p>`, "btn", "previous song") +
           card(`<div class="mid">⏯</div><p>Play / pause</p>`, "btn", "pause") +
           card(`<div class="mid">⏭</div><p>Next</p>`, "btn", "next song");
+      } else if (name === "situation") {
+        const { items } = await (await api("/api/holo/panel?name=situation")).json();
+        html = items.map((i) => card(`<small>${esc(i.name.toUpperCase())}</small><div class="mid">${esc(i.level.toUpperCase())}</div>
+          <p>${esc(i.detail)}</p>`, `sit lvl-${i.level}`)).join("") || card("<b>All quiet, sir.</b>", "wide");
       } else if (name === "reminders") {
         const { items } = await (await api("/api/holo/panel?name=reminders")).json();
         html = items.map((r) => card(`<small>${new Date(r.due).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }).toUpperCase()}</small>

@@ -78,8 +78,15 @@ STYLES = {
 ACTIVITY_FILE = config.DATA_DIR / "activity.json"
 
 
-def record_activity():
-    """Note when he uses Jarvis, so Jarvis can notice late nights. Hours before 5am count as the night before."""
+TOPICS = {"weather": r"weather|rain|forecast|umbrella", "news": r"\bnews\b|headlines", "coffee": r"coffee|espresso|latte",
+          "time": r"what time|the time"}
+COUNTS_FILE = config.DATA_DIR / "callbacks.json"
+
+
+def record_activity(text=""):
+    """Note when he uses Jarvis (to notice late nights; hours before 5am count as the night before), and tally a
+    few everyday topics for banter callbacks ("third coffee today, sir")."""
+    import re
     now = dt.datetime.now()
     night = (now - dt.timedelta(days=1)).date() if now.hour < 5 else None
     try:
@@ -91,6 +98,41 @@ def record_activity():
     for old in sorted(data)[:-30]:
         del data[old]
     ACTIVITY_FILE.write_text(json.dumps(data), encoding="utf-8")
+    try:
+        counts = json.loads(COUNTS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        counts = {}
+    today = counts.setdefault(now.date().isoformat(), {})
+    for topic, pattern in TOPICS.items():
+        if re.search(pattern, text, re.I):
+            today[topic] = today.get(topic, 0) + 1
+    for old in sorted(counts)[:-14]:
+        del counts[old]
+    COUNTS_FILE.write_text(json.dumps(counts), encoding="utf-8")
+
+
+def callbacks():
+    """A line of today's notable moments for an occasional callback, or ''."""
+    try:
+        counts = json.loads(COUNTS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        counts = {}
+    today = counts.get(dt.date.today().isoformat(), {})
+    bits = [f"he's asked about {t} {n} times today" for t, n in today.items() if n >= 3 and t != "coffee"]
+    try:
+        from . import meals
+        coffees = today.get("coffee", 0) + sum(1 for m in meals._load() if m["time"][:10] == dt.date.today().isoformat()
+                                               and "coffee" in m["meal"].lower())
+        if coffees >= 2:
+            records = [sum(1 for m in meals._load() if m["time"][:10] == d and "coffee" in m["meal"].lower()) + v.get("coffee", 0)
+                       for d, v in counts.items()]
+            bits.append(f"coffee number {coffees} today (his record is {max(records + [coffees])})")
+        t = meals.totals(dt.date.today())
+        if t["meals"] >= 3:
+            bits.append(f"{t['meals']} meals logged today, about {t['calories']} calories")
+    except Exception:
+        pass
+    return "; ".join(bits)
 
 
 def _situation():
@@ -146,6 +188,9 @@ get_weather for weather, and get_headlines for a quick news rundown.
 The HUD can show 3D holograms he controls with his hands. When he asks to see something as a hologram, in 3D, or to \
 "break down" or "expand" a topic visually, call show_hologram (give the topic's main parts so it opens instantly); \
 hologram_control changes or closes the one that's open.
+When he says "what's this", "what's that", "read this" or "explain this" about something he's pointing at with the \
+mouse, call whats_this (it shows you the spot under his pointer). "What if" plans go to run_simulation; "show me my \
+week / inbox / spending" to show_my_data; a situation report or threat assessment to situation_report.
 
 You have his Gmail and Google Calendar. For "morning briefing" style requests, combine weather, today's calendar, unread \
 email and headlines into one short spoken summary. Prefer saving email drafts unless he clearly says to send. \
@@ -228,7 +273,7 @@ class Brain:
         except Exception:
             quick_reply = None
         try:
-            record_activity()
+            record_activity(text)
         except OSError:
             pass
         if quick_reply:
@@ -275,7 +320,9 @@ class Brain:
         """Send one user request; returns Jarvis's final spoken/printed reply.
         on_text(piece): if given, the reply is streamed and each piece of text is passed on as it's written (so the
         HUD can start speaking the first sentence early); on_text(None) marks the end of each step."""
-        self.messages.append({"role": "user", "content": text})
+        notable = callbacks()  # today's notable moments, for an occasional callback ("third coffee today, sir")
+        self.messages.append({"role": "user", "content": text if not notable else
+                              f"{text}\n\n(Background for an occasional callback, only if it fits naturally: {notable}.)"})
         model = spend.current_model()  # the cheapest model once today's budget is used up
         web_tools, betas, fallbacks = model_options(model)
         for _ in range(MAX_STEPS):

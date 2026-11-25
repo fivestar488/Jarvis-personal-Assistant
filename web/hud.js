@@ -590,6 +590,10 @@ function startClapEar() {
     .catch(() => { if (clapEar === ear) clapEar = null; });
 }
 
+// Whether this screen should speak a reply: the one that asked, or (for standing orders, which nobody asked out
+// loud) the PC's screen rather than the phone.
+const forMe = (origin) => origin === myId || (origin === "standing" && matchMedia("(pointer: fine)").matches);
+
 function handle(ev) {
   switch (ev.type) {
     case "hello":
@@ -612,14 +616,14 @@ function handle(ev) {
       break;
     case "state":
       setState(ev.state);
-      if (ev.audio && voiceOn && ev.origin === myId) { spokenText = "thinking"; play(ev.audio); }
+      if (ev.audio && voiceOn && forMe(ev.origin)) { spokenText = "thinking"; play(ev.audio); }
       break;
     case "status":
       addActivity(ev.text);
       showSubtitle("▸ " + ev.text, true);
       break;
     case "speech":  // one sentence of a reply that's still being written: speak it straight away
-      if (voiceOn && ev.origin === myId) {
+      if (voiceOn && forMe(ev.origin)) {
         if (!speaking && !speechQueue.length) resumable = [];  // a new answer replaces the old "continue"
         queueSpeech(ev.audio, ev.text);
       }
@@ -636,7 +640,7 @@ function handle(ev) {
         if (ev.level === "critical") { document.body.classList.add("red-alert"); setTimeout(() => document.body.classList.remove("red-alert"), 6000); }
         if (ev.level && ev.level !== "note") setVitals(ev.level);
       } else blip(990, 0.08);
-      const mine = alert || ev.origin === myId;
+      const mine = alert || forMe(ev.origin);
       if (activeTab !== "comms") document.querySelector('.tabs [data-tab="comms"]').classList.add("ping");
       if (voiceOn && mine && ev.audio) { replyDone = true; queueSpeech(ev.audio, ev.text); }
       else if (ev.streamed && mine && (speaking || speechQueue.length)) replyDone = true;  // afterSpeaking once the last sentence ends

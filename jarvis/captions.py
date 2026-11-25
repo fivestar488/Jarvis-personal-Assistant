@@ -42,6 +42,27 @@ def _run():
     root.update_idletasks()
     _make_click_through(root)
     hide_at = {"line": None, "status": None}
+    # The status strip: a slim always-on-top bar in the top-right corner
+    strip = tk.Toplevel(root)
+    strip.overrideredirect(True)
+    strip.attributes("-topmost", True)
+    strip.configure(bg=key)
+    strip.attributes("-transparentcolor", key)
+    strip_label = tk.Label(strip, text="", fg="#cdf2ff", bg="#0b1622", font=("Segoe UI", 10, "bold"), padx=10, pady=3)
+    strip_label.pack()
+    strip.withdraw()
+    strip.update_idletasks()
+    _make_click_through(strip)
+
+    def show_strip(text, color):
+        if not text:
+            strip.withdraw()
+            return
+        strip_label.config(text=text, fg=color)
+        strip.update_idletasks()
+        w, h = strip_label.winfo_reqwidth(), strip_label.winfo_reqheight()
+        strip.geometry(f"{w}x{h}+{root.winfo_screenwidth() - w - 14}+10")
+        strip.deiconify()
 
     def place():
         root.update_idletasks()
@@ -57,6 +78,9 @@ def _run():
                 if kind == "quit":
                     root.destroy()
                     return
+                if kind == "strip":  # (text, colour) for the status strip
+                    show_strip(*text)
+                    continue
                 target = line if kind == "line" else status
                 target.config(text=text)
                 if hide_at[kind]:
@@ -116,5 +140,92 @@ def set_enabled(on):
     if on:
         say("Captions on.")
     elif _thread and _thread.is_alive():
-        _queue.put(("quit", "", 0))
+        _queue.put(("line", "", 0)) if strip_on() else _queue.put(("quit", "", 0))
     return "Captions on." if on else "Captions off."
+
+
+# ---------- the status strip ----------
+
+STRIP_FILE = config.DATA_DIR / "status-strip-on"
+COLORS = {"nominal": "#cdf2ff", "note": "#cdf2ff", "caution": "#ffb347", "warning": "#ff8a3d", "critical": "#ff4b3a"}
+_strip_thread = None
+
+
+def strip_on():
+    return config.STATUS_STRIP or STRIP_FILE.exists()
+
+
+def strip_text():
+    """'⚡ 76% · ONLINE · $0.02 · NEXT 18:00 GYM', and the colour for the worst status."""
+    import psutil
+    from . import focus, spend, vitals
+    parts, worst = [], "nominal"
+    b = psutil.sensors_battery()
+    if b:
+        level = "nominal" if b.power_plugged or b.percent > 25 else "caution" if b.percent > 15 else "warning" if b.percent > 7 else "critical"
+        worst = max(worst, level, key=lambda l: vitals.RANK[l])
+        parts.append(f"{'⚡' if b.power_plugged else '▮'} {round(b.percent)}%")
+    online = vitals._online()
+    parts.append("ONLINE" if online else "OFFLINE")
+    if not online:
+        worst = max(worst, "caution", key=lambda l: vitals.RANK[l])
+    parts.append(f"${spend.today():.2f}")
+    if focus.quiet():
+        parts.append("DND")
+    nxt = _next_event()
+    if nxt:
+        parts.append(nxt)
+    return " · ".join(parts), COLORS[worst]
+
+
+_event_cache = {"at": 0.0, "text": ""}
+
+
+def _next_event():
+    import datetime as dt
+    import time
+    if time.time() - _event_cache["at"] < 600:
+        return _event_cache["text"]
+    _event_cache["at"] = time.time()
+    text = ""
+    try:
+        from . import google_tools
+        if google_tools.connected():
+            now = dt.datetime.now()
+            for e in google_tools.list_events(now, now + dt.timedelta(hours=18)):
+                start = dt.datetime.fromisoformat(e["start"]).replace(tzinfo=None) if not e["all_day"] else None
+                if start and start > now:
+                    text = f"NEXT {start:%H:%M} {e['title'].strip()[:22].upper()}"
+                    break
+    except Exception:
+        pass
+    _event_cache["text"] = text
+    return text
+
+
+def start_strip():
+    global _strip_thread
+    if _strip_thread and _strip_thread.is_alive():
+        return
+
+    def loop():
+        import time
+        while strip_on():
+            try:
+                _ensure()
+                _queue.put(("strip", strip_text(), 0))
+            except Exception:
+                pass
+            time.sleep(30)
+        _queue.put(("strip", ("", ""), 0))
+    _strip_thread = threading.Thread(target=loop, daemon=True, name="status-strip")
+    _strip_thread.start()
+
+
+def set_strip(on):
+    STRIP_FILE.touch() if on else STRIP_FILE.unlink(missing_ok=True)
+    if on:
+        start_strip()
+    else:
+        _queue.put(("strip", ("", ""), 0))
+    return "Status strip on, sir: top right of your screen." if on else "Status strip off."

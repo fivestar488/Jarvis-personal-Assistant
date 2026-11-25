@@ -45,6 +45,9 @@ Jarvis's use and transfer of information received from Google APIs adheres to th
 - **Your documents (Ask my files):** Jarvis builds a search index of the folders you choose (Documents and Desktop by default), stored only in the `data` folder on your PC. When you ask a question, only the few most relevant passages, with secrets hidden, are sent to the AI model to answer it.
 - **Activity journal:** off unless you turn it on. Once a minute it notes the name and title of the window you're using, on your PC only. Never screenshots.
 - **Clipboard history:** what you copy is kept in memory only while Jarvis runs, never saved to disk. Anything containing a secret is not kept at all.
+- **Trip mode:** when you ask, Jarvis reads the subject lines and previews of travel emails (flights, hotels), with secrets hidden, so the AI model can find your trip dates. The trips are saved only on your PC.
+- **Offline wake word:** off unless you turn it on. It listens to your microphone for "Hey Jarvis" entirely on your PC; no audio is saved or sent anywhere.
+- **Point and ask:** a screenshot is taken only when you ask "what's this?", and it goes to the AI model to answer, like any screen question.
 - **Perimeter alerts:**
   - Jarvis reads Windows' own record of failed sign-ins.
   - It keeps a list of the devices your PC has seen on your Wi-Fi, without scanning the network.

@@ -241,7 +241,10 @@ def expand(path):
 
 
 def panel_data(name):
-    """Data for the Spotify and reminders panels (the others use the HUD's existing weather/news/calendar feeds)."""
+    """Data for the Spotify, reminders and situation panels (the others use the HUD's own feeds)."""
+    if name == "situation":
+        from . import boards
+        return {"items": boards.situation_items()}
     if name == "spotify":
         fn = tools.TOOLS.get("spotify_now_playing", {}).get("fn")
         return {"text": fn() if fn else "Spotify isn't set up."}

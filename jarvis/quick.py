@@ -128,8 +128,13 @@ def answer(text):
             return tools.acknowledge_reminder()
         return None
 
-    reply = (_scanner(t) or _hologram(t) or _actions(t) or _modes(t) or _meeting(t) or _meals(t) or _credit(t)
-             or _suit(t))
+    from . import tutor
+    if tutor.session:  # a flashcard quiz is running: what he says is his answer
+        if re.fullmatch(r"(?:stop|end|cancel|quit|finish)(?: the| this)? quiz|stop", t):
+            return tutor.stop()
+        return tutor.answer(t)
+    reply = (_wave3(t) or _scanner(t) or _hologram(t) or _actions(t) or _modes(t) or _meeting(t) or _meals(t)
+             or _credit(t) or _suit(t))
     if reply:
         return reply
 
@@ -268,6 +273,73 @@ def _modes(t):
         return captions.set_enabled(True)
     if re.fullmatch(r"(?:turn off |hide |disable )(?:the )?(?:live )?(?:captions|subtitles)|(?:live )?(?:captions|subtitles) off", t):
         return captions.set_enabled(False)
+    return None
+
+
+LANGUAGES = (r"spanish|french|german|italian|japanese|chinese|mandarin|arabic|hebrew|portuguese|korean|russian|dutch|"
+             r"greek|turkish|hindi|polish|swedish")
+
+
+def _wave3(t):
+    """Data holograms, situation board, simulations, trips, game mode, breaks, standing orders, the offline wake
+    word, the status strip and the flashcard tutor."""
+    from . import boards, captions, focus, planner, standing, trips, tutor, wakeword
+    m = (re.fullmatch(r"(?:show|open|bring up|pull up)(?: me)? my (week|schedule|calendar|inbox|emails?|mail|spending|spend|"
+                      r"costs?|calories|meals|food)(?: as a hologram| in 3d| hologram)?", t)
+         or re.fullmatch(r"(?:show|open)(?: me)? (?:a |the )?(?:hologram|3d view|3d map) of my (week|schedule|calendar|inbox|"
+                         r"emails?|mail|spending|spend|costs?|calories|meals|food)", t))
+    if m:
+        return boards.show(m.group(1))
+    if re.fullmatch(r"(?:give me a |run a )?(?:situation|sit) ?(?:report|rep|board)|sitrep|threat (?:assessment|level|report)|any threats", t):
+        return boards.situation()
+    m = re.fullmatch(r"(?:run (?:a |the )?)?simulat(?:e|ion)(?: of| on| for)? (.{6,})", t)
+    if m:
+        return planner.simulate(m.group(1))
+    if re.fullmatch(r"trip mode|show (?:me )?my (?:next )?(?:trip|flight)|when(?:s| is) my (?:next )?(?:flight|trip)", t):
+        return trips.trip_mode()
+    if re.fullmatch(r"(?:scan|search|check) my (?:email|emails|inbox|gmail|mail) for (?:trips|flights|travel|bookings)", t):
+        return trips.scan()
+    m = re.fullmatch(r"add a trip to (.+?) on (.+)", t)
+    if m:
+        day = _target_date(m.group(2), dt.date.today())
+        return trips.add(m.group(1), day.isoformat()) if day else None
+    if re.fullmatch(r"(?:turn on |enable |start )?(?:game mode|do not disturb|dnd)(?: on| mode)?", t):
+        return focus.set_manual(True)
+    if re.fullmatch(r"(?:turn off |disable |stop |end )(?:game mode|do not disturb|dnd)|(?:game mode|do not disturb|dnd) off", t):
+        return focus.set_manual(False)
+    if re.fullmatch(r"(?:turn on |enable |start )?(?:the )?(?:break|eye break) reminders(?: on)?", t):
+        return focus.set_breaks(True)
+    if re.fullmatch(r"(?:turn off |disable |stop )(?:the )?(?:break|eye break) reminders|(?:break|eye break) reminders off", t):
+        return focus.set_breaks(False)
+    if re.fullmatch(r"(?:list |show |what are )?(?:my )?standing orders", t):
+        return standing.listing()
+    m = re.fullmatch(r"(?:cancel|delete|remove) (?:standing order (\d+)|(all) (?:my )?standing orders)", t)
+    if m:
+        return standing.cancel(m.group(1) or "all")
+    if re.match(r"(?:every|on|when|whenever|daily|weekdays|weekends) ", t):
+        added = standing.add(t)
+        if added:
+            return added
+    if re.fullmatch(r"(?:turn on |enable |start )?(?:the )?offline wake word(?: on)?", t):
+        return wakeword.switch(True)
+    if re.fullmatch(r"(?:turn off |disable |stop )(?:the )?offline wake word|offline wake word off", t):
+        return wakeword.switch(False)
+    if re.fullmatch(r"(?:turn on |show |enable )?(?:the )?status (?:strip|bar)(?: on)?", t):
+        return captions.set_strip(True)
+    if re.fullmatch(r"(?:turn off |hide |disable )(?:the )?status (?:strip|bar)|status (?:strip|bar) off", t):
+        return captions.set_strip(False)
+    m = (re.fullmatch(rf"teach me (?:some )?((?:basic )?(?:{LANGUAGES})(?: words| vocabulary| phrases)?)", t)
+         or re.fullmatch(r"(?:make|create|write)(?: me)? (?:some )?flash ?cards (?:on|about|for) (.+)", t))
+    if m:
+        return tutor.make_deck(m.group(1))
+    if re.fullmatch(r"quiz me on my notes|(?:make|create) flash ?cards (?:from|on) my notes", t):
+        made = tutor.make_deck("my notes", from_notes=True)
+        return made if not made.split()[0].isdigit() else made + " " + tutor.start_quiz("my notes")
+    m = re.fullmatch(r"(?:quiz me|test me|start (?:a|the|my) quiz)(?: on (.+))?", t)
+    if m:
+        return tutor.start_quiz(m.group(1) or "")
+    if re.fullmatch(r"how many (?:flash ?cards|cards) (?:are )?due(?: today)?", t):
+        return tutor.flashcards("due")
     return None
 
 

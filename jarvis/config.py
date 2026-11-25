@@ -126,6 +126,10 @@ CLIPBOARD_HISTORY = (os.getenv("JARVIS_CLIPBOARD_HISTORY") or "on").strip().lowe
 DAY_WRAP = os.getenv("JARVIS_DAY_WRAP", "21:30").strip()
 # Perimeter alerts: failed Windows sign-ins and new devices on your home Wi-Fi
 PERIMETER = (os.getenv("JARVIS_PERIMETER") or "on").strip().lower() != "off"
+# Offline "Hey Jarvis" wake word (a tiny detector on this PC). Also "offline wake word on/off".
+WAKE_WORD = (os.getenv("JARVIS_WAKE_WORD") or "off").strip().lower() == "on"
+# Always-visible status strip in the corner of the screen (also "status strip on/off")
+STATUS_STRIP = (os.getenv("JARVIS_STATUS_STRIP") or "off").strip().lower() == "on"
 
 # Seconds Jarvis keeps listening for a follow-up after answering, without needing the wake word again.
 FOLLOW_UP_SECONDS = float(os.getenv("JARVIS_FOLLOW_UP_SECONDS", "6"))
