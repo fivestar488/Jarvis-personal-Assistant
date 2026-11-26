@@ -751,3 +751,114 @@ body.mood .hud, body.mood .topbar, body.mood .ticker, body.mood .console { filte
                  letter-spacing: .3em; color: var(--muted); }
 @media (max-width: 1100px) { #bot { display: none; } }
 body.low-power #bot { opacity: .4; }
+
+/* ---------- pictures on glass (holo.js "IMAGES"): grab, stretch, spotlight or throw them ---------- */
+.hand-cursor { will-change: transform; }
+#holo-images { position: fixed; inset: 0; z-index: 80; pointer-events: none; }
+.hi-dim {
+  position: absolute; inset: 0; background: rgba(0, 0, 0, .62); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+  opacity: 0; pointer-events: none; transition: opacity .35s;
+}
+#holo-images.spot .hi-dim { opacity: 1; pointer-events: auto; }
+.holo-img {
+  position: absolute; left: 0; top: 0; margin: 0; padding: 8px 8px 6px; pointer-events: auto; cursor: grab;
+  background: rgba(var(--p-rgb), .55); border: 1px solid rgba(var(--c-rgb), .35); border-radius: 10px;
+  box-shadow: 0 0 28px rgba(var(--c-rgb), .16), 0 24px 60px rgba(0, 0, 0, .55);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  touch-action: none; user-select: none; will-change: transform;
+  transition: box-shadow .2s, filter .2s, opacity .35s;
+}
+.holo-img.anim { transition: transform .5s cubic-bezier(.2, .9, .3, 1.08), box-shadow .2s, filter .2s, opacity .4s; }
+.holo-img.arriving { opacity: 0; filter: brightness(2.6) blur(2px); }
+.holo-img.held { cursor: grabbing; filter: brightness(1.12) saturate(1.1); box-shadow: 0 0 46px rgba(var(--c-rgb), .5), 0 30px 70px rgba(0, 0, 0, .6); }
+.holo-img.thrown { opacity: 0; }
+#holo-images.spot .holo-img:not(.presented) { opacity: .2; filter: blur(2px); pointer-events: none; }
+.holo-img.presented { box-shadow: 0 0 60px rgba(var(--c-rgb), .35), 0 30px 90px rgba(0, 0, 0, .7); }
+.holo-img img { display: block; max-width: var(--hi-w, 34vw); max-height: 52vh; border-radius: 6px; pointer-events: none; background: #000; }
+.holo-img figcaption {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 14px; padding: 7px 4px 1px; max-width: var(--hi-w, 34vw);
+  font-family: var(--hud-font); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+}
+.holo-img figcaption b { color: var(--cyan-hi); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.holo-img figcaption span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .08em; }
+.holo-img figcaption:not(:has(b:not(:empty))):not(:has(span:not(:empty))) { display: none; }
+.hi-x {
+  position: absolute; top: -12px; right: -12px; width: 28px; height: 28px; border-radius: 50%; padding: 0;
+  background: var(--bg); border: 1px solid var(--cyan-dim); color: var(--cyan); font-size: 18px; line-height: 1;
+  opacity: 0; transition: opacity .2s;
+}
+.holo-img:hover .hi-x, .holo-img.holo-target .hi-x { opacity: 1; }
+.holo-img.holo-target { outline: none; border-color: var(--cyan); }
+@media (max-width: 760px) {
+  .holo-img img, .holo-img figcaption { max-width: 80vw; max-height: 50vh; }
+  .hi-x { opacity: 1; }
+}
+
+/* ---------- CLEAN view (the VIEW button; the default on a big screen) ----------
+   Just the reactor, the conversation and the command line. Everything else is still there, out of the way:
+   move the mouse to the top or bottom bar for its buttons, or over the left side for the diagnostics. */
+@media (min-width: 1101px) {
+  body.clean { grid-template-rows: auto 1fr auto; }
+  body.clean .ticker, body.clean .scanlines, body.clean .scanbar, body.clean #bot { display: none; }
+  body.clean .bg-grid { opacity: .45; }
+
+  body.clean .topbar { border-bottom-color: transparent; background: none; }
+  body.clean .topbar::after { display: none; }
+  body.clean .brand-sub { opacity: .55; }
+  body.clean .topbar .chip { opacity: 0; transition: opacity .25s, background .2s; }
+  body.clean .topbar:hover .chip, body.clean .topbar:focus-within .chip { opacity: 1; }
+
+  body.clean .hud { grid-template-columns: minmax(260px, 330px) 1fr minmax(300px, 400px); padding-top: 4px; }
+  /* the side panels fade away until you reach for them */
+  body.clean .panel.left, body.clean .agenda-card { opacity: 0; transition: opacity .3s; }
+  body.clean .panel.left:hover, body.clean .panel.left:focus-within,
+  body.clean .agenda-card:hover, body.clean .agenda-card:focus-within { opacity: 1; }
+  body.clean .mini-stats { display: block; font-family: var(--hud-font); font-size: 10px; letter-spacing: .22em; color: var(--muted); opacity: .8; }
+
+  /* the conversation: no box, just the words */
+  body.clean [data-card="comms"] { background: none; border-color: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+  body.clean [data-card="comms"]::before { display: none; }
+  body.clean .msg { background: none; }
+
+  body.clean .quick button { background: none; border-color: transparent; color: var(--muted); clip-path: none; }
+  body.clean .quick button:hover { color: var(--cyan-hi); background: rgba(var(--c-rgb), .08); box-shadow: none; }
+
+  body.clean .console { border-top-color: transparent; background: none; }
+  body.clean .toggles .toggle:not(.on) { opacity: 0; transition: opacity .25s; }
+  body.clean .console:hover .toggle, body.clean .console:focus-within .toggle { opacity: 1; }
+  body.clean #input { background: rgba(var(--p-rgb), .35); border-color: transparent; border-bottom-color: var(--cyan-dim); }
+  body.clean #input:focus { border-bottom-color: var(--cyan); }
+}
+/* An empty conversation says how to start one */
+.log:empty::before {
+  content: "Say \201CJarvis\201D or type below.";
+  margin: auto; color: var(--muted); font-family: var(--hud-font); font-size: 10px; letter-spacing: .25em; text-transform: uppercase; opacity: .7;
+}
+
+/* ---------- the bin (holo.js): drop pictures and holograms on it to throw them away; tap it to bring one back ---------- */
+#holo-bin {
+  position: fixed; left: 22px; bottom: 100px; z-index: 85; width: 78px; height: 78px; padding: 0;
+  display: grid; place-items: center; align-content: center; gap: 2px; border-radius: 50%;
+  background: rgba(var(--p-rgb), .6); border: 1px dashed var(--cyan-dim); color: var(--muted);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  opacity: 0; transform: scale(.6); pointer-events: none;
+  transition: opacity .3s, transform .25s cubic-bezier(.2, .9, .3, 1.3), border-color .2s, color .2s, box-shadow .2s, background .2s;
+}
+#holo-bin.show { opacity: .75; transform: none; pointer-events: auto; }
+#holo-bin:hover, #holo-bin.holo-target { opacity: 1; color: var(--cyan); border-color: var(--cyan); }
+#holo-bin svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+#holo-bin span { font-family: var(--hud-font); font-size: 8px; letter-spacing: .25em; }
+#holo-bin.has::after {  /* something can be brought back */
+  content: ""; position: absolute; top: 8px; right: 10px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--amber); box-shadow: 0 0 6px var(--amber);
+}
+#holo-bin.armed {
+  opacity: 1; transform: scale(1.3); color: var(--red); border: 2px solid var(--red);
+  background: rgba(255, 59, 48, .14); box-shadow: 0 0 30px rgba(255, 59, 48, .55);
+}
+#holo-bin.gulp { animation: binGulp .45s; }
+@keyframes binGulp { 30% { transform: scale(1.45) rotate(-6deg); } 60% { transform: scale(.9) rotate(4deg); } }
+.holo-img.binned { opacity: 0; filter: brightness(2) hue-rotate(-40deg); }
+#holo.to-bin { animation: holoToBin .42s ease-in forwards; transform-origin: 60px calc(100% - 140px); }
+@keyframes holoToBin { to { opacity: 0; transform: scale(.04); filter: brightness(2.5); } }
+@media (max-width: 760px) { #holo-bin { left: 14px; bottom: 150px; width: 64px; height: 64px; } }

@@ -225,6 +225,7 @@ const Holo = (() => {
     beep(520, 0.08); setTimeout(() => beep(980, 0.1), 90);
     send({ type: "holo_state", open: true, kind, subject });
     if (!lowPowerOn()) startHands();  // (mouse and touch still work in Low Power Mode)
+    updateBin();
     syncClapEar();
     const token = ++openCount;
     // A scan is plain page content: show it now, so a result that arrives quickly is never missed while the
@@ -311,7 +312,8 @@ const Holo = (() => {
     if (!isOpen) return;
     isOpen = false;
     beep(700, 0.06); setTimeout(() => beep(380, 0.1), 70);
-    el.box.className = direction < 0 ? "fly-left" : direction > 0 ? "fly-right" : "hide";
+    el.box.className = direction === "bin" ? "to-bin" : direction < 0 ? "fly-left" : direction > 0 ? "fly-right" : "hide";
+    updateBin();
     setTimeout(() => {
       if (isOpen) return;  // reopened meanwhile
       el.box.hidden = true;
@@ -1136,7 +1138,7 @@ const Holo = (() => {
   function tap(x, y) {
     const hit = document.elementFromPoint(x, y);
     if (isOpen) {
-      const button = hit?.closest?.("#holo button, #holo [data-say]");
+      const button = hit?.closest?.("#holo button, #holo [data-say], #holo-bin");
       if (button) { button.click(); return; }
       const item = pick(x, y);
       if (!item) return;
@@ -1188,12 +1190,14 @@ const Holo = (() => {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.x = e.clientX; drag.y = e.clientY;
       if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 6) drag.moved = true;
-      if (drag.moved) rotateBy(dx * 0.008, dy * 0.006);
+      if (drag.moved) { rotateBy(dx * 0.008, dy * 0.006); armBin(overBin(e.clientX, e.clientY)); }
     });
     const end = (e) => {
       if (!pts.has(e.pointerId)) return;
       pts.delete(e.pointerId);
       if (drag && !drag.pinch && !drag.moved && e.type === "pointerup") tap(e.clientX, e.clientY);
+      else if (drag && !drag.pinch && drag.moved && e.type === "pointerup" && overBin(e.clientX, e.clientY)) trashHolo();
+      armBin(false);
       if (!pts.size) drag = null;
     };
     box.addEventListener("pointerup", end);
@@ -1220,7 +1224,10 @@ const Holo = (() => {
     hand.starting = true;
     hand.cancelled = false;
     try {
-      hand.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" }, audio: false });
+      // 640x480 is plenty for the tracker (it shrinks every frame to ~224px anyway); asking for a high frame rate is
+      // what makes the cursor keep up with your hand
+      hand.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+        width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 }, facingMode: "user" } });
       el.video.srcObject = hand.stream;
       await el.video.play();
       el.cam.hidden = false;
@@ -1230,7 +1237,9 @@ const Holo = (() => {
         const files = await vision.FilesetResolver.forVisionTasks(`${MP}/wasm`);
         const make = (delegate) => vision.HandLandmarker.createFromOptions(files, {
           baseOptions: { modelAssetPath: HAND_MODEL, delegate }, runningMode: "VIDEO", numHands: 2,
-          minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+          // 0.7 to find a new hand keeps "ghost hands" in a busy room away; 0.5 to keep one lets a fast, blurry hand
+          // stay tracked instead of being dropped and re-found (idea from the barehands project)
+          minHandDetectionConfidence: 0.7, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
         });
         hand.landmarker = await make("GPU").catch(() => make("CPU"));
       }
@@ -1238,7 +1247,8 @@ const Holo = (() => {
       el.cam.classList.remove("loading");
       hand.on = true;
       updateGestureButton();
-      requestAnimationFrame(handLoop);
+      scheduleDetect();
+      if (!hand.drawing) { hand.drawing = true; requestAnimationFrame(drawCursors); }
       syncClapEar();
     } catch (e) {
       if (hand.cancelled) return;
@@ -1265,17 +1275,56 @@ const Holo = (() => {
     syncClapEar();
   }
 
-  function handLoop() {
+  // Look for hands once per NEW camera frame (requestVideoFrameCallback), not on a fixed timer: no wasted work on
+  // repeated frames and no waiting for the next timer tick. Low Power Mode checks ~15 times a second.
+  function scheduleDetect() {
     if (!hand.on) return;
-    requestAnimationFrame(handLoop);
+    const v = el.video;
+    if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(detect);
+    else requestAnimationFrame(detect);
+  }
+  function detect() {
+    if (!hand.on) return;
+    scheduleDetect();
     const now = performance.now(), v = el.video;
-    if (now - hand.lastRun < 45 || v.readyState < 2 || v.currentTime === hand.lastTime) return;  // ~20 checks a second
+    if (v.readyState < 2 || v.currentTime === hand.lastTime) return;
+    if (lowPowerOn() && now - hand.lastRun < 66) return;
     hand.lastRun = now;
     hand.lastTime = v.currentTime;
     let res;
     try { res = hand.landmarker.detectForVideo(v, now); } catch { return; }
     track(res.landmarks || [], now);
     drawCam(res.landmarks || []);
+  }
+
+  // The cursors are drawn every screen refresh (60-144 times a second), gliding towards where the filtered hand
+  // is heading, so they move smoothly between camera frames instead of jumping 30 times a second
+  function drawCursors(t) {
+    if (!hand.on) { hand.drawing = false; return; }
+    requestAnimationFrame(drawCursors);
+    const dt = Math.min(0.05, (t - (hand.lastDraw || t)) / 1000);
+    hand.lastDraw = t;
+    hand.slots.forEach((s, i) => {
+      const c = el.cursors[i];
+      if (!s || s.cx == null) return;
+      const lead = 0.035;  // aim slightly ahead along the hand's motion, to hide the camera's own delay
+      const tx = s.cx + clamp(s.vx * lead, -60, 60), ty = s.cy + clamp(s.vy * lead, -60, 60);
+      if (s.dx == null) { s.dx = tx; s.dy = ty; }
+      const k = 1 - Math.exp(-dt * 28);
+      s.dx += (tx - s.dx) * k;
+      s.dy += (ty - s.dy) * k;
+      c.style.transform = `translate3d(${s.dx.toFixed(1)}px, ${s.dy.toFixed(1)}px, 0)`;
+    });
+  }
+
+  // One Euro filter (Casiez et al.): heavy smoothing when the hand is nearly still (no jitter), light smoothing when
+  // it moves fast (no lag). Works in pixels.
+  function euro(prev, x, dt, minCut = 1.4, beta = 0.006) {
+    const alpha = (cut) => { const r = 2 * Math.PI * cut * dt; return r / (r + 1); };
+    if (!prev) return { x, d: 0 };
+    const d = prev.d + alpha(1.0) * ((x - prev.x) / dt - prev.d);
+    const cut = minCut + beta * Math.abs(d);
+    return { x: prev.x + alpha(cut) * (x - prev.x), d };
   }
 
   // Measurements of one hand. Camera x is mirrored so moving your hand right moves the cursor right.
@@ -1331,16 +1380,31 @@ const Holo = (() => {
       const c = el.cursors[i];
       if (!s) { c.classList.remove("show"); return; }
       const target = toScreen(s.m.point);
-      if (s.cx == null) { s.cx = target.x; s.cy = target.y; }
-      const speed = Math.hypot(target.x - s.cx, target.y - s.cy) / innerWidth;
-      const k = clamp(0.25 + speed * 6, 0.25, 0.85);
-      s.cx += (target.x - s.cx) * k;
-      s.cy += (target.y - s.cy) * k;
+      const dt = clamp((now - (s.t || now - 33)) / 1000, 0.008, 0.1);
+      s.t = now;
+      s.fx = euro(s.fx, target.x, dt);
+      s.fy = euro(s.fy, target.y, dt);
+      s.cx = s.fx.x; s.cy = s.fy.x;
+      s.vx = s.fx.d; s.vy = s.fy.d;
+      const speed = Math.hypot(s.vx, s.vy) / innerWidth;  // screen widths per second
       const wasPinch = s.pinch;
       s.pinch = wasPinch ? s.m.pinchD < 0.5 : s.m.pinchD < 0.32;  // hysteresis, so it doesn't flicker
-      if (s.pinch && !wasPinch) { s.pinchStart = { t: now, x: s.cx, y: s.cy, lx: s.cx, ly: s.cy }; s.dragging = false; }
+      if (s.pinch && !wasPinch) {
+        s.pinchStart = { t: now, x: s.cx, y: s.cy, lx: s.cx, ly: s.cy };
+        s.dragging = false;
+        // A "pinch" that appears while the hand is sweeping fast is usually motion blur, not a real pinch: it
+        // does nothing until the hand slows down (then it counts from there)
+        s.ghost = speed > 1.6;
+        s.pinchStart.grab = s.ghost ? null : imageAt(s.cx, s.cy);
+      } else if (s.pinch && s.ghost && speed < 0.5) {
+        s.ghost = false;
+        s.pinchStart = { t: now, x: s.cx, y: s.cy, lx: s.cx, ly: s.cy, grab: imageAt(s.cx, s.cy) };
+      }
+      s.ghostRelease = !s.pinch && wasPinch && s.ghost;
+      (s.vh ||= []).push({ t: now, vx: s.vx, vy: s.vy });
+      while (s.vh.length && now - s.vh[0].t > 200) s.vh.shift();
+      if (!s.pinch) s.ghost = false;
       s.wasPinch = wasPinch;
-      c.style.transform = `translate(${s.cx}px, ${s.cy}px)`;
       c.classList.add("show");
       c.classList.toggle("pinch", s.pinch);
       s.trail.push({ t: now, x: s.m.palm.x, open: s.m.open && !s.pinch });
@@ -1355,6 +1419,15 @@ const Holo = (() => {
       const apart = Math.hypot(a.m.palm.x - b.m.palm.x, a.m.palm.y - b.m.palm.y) / size;
       hand.history.push({ t: now, apart, open: a.m.open && b.m.open });
       while (hand.history.length && now - hand.history[0].t > 900) hand.history.shift();
+      const held = (a.pinch && a.pinchStart?.grab) || (b.pinch && b.pinchStart?.grab);
+      if (a.pinch && b.pinch && held && imgs.includes(held)) {  // both hands pinching a picture: stretch it
+        const d = Math.hypot(a.cx - b.cx, a.cy - b.cy);
+        if (hand.imgZoom?.it !== held) { hand.imgZoom = { it: held, d, s: held.s }; liftImg(held); }
+        else { held.s = clamp(hand.imgZoom.s * d / Math.max(30, hand.imgZoom.d), 0.3, 4); placeImg(held); }
+        a.dragging = b.dragging = true;
+        return;
+      }
+      if (hand.imgZoom) { dropImg(hand.imgZoom.it); hand.imgZoom = null; }
       if (a.pinch && b.pinch && model?.kind === "sculpt" && model.active) {  // sculpting: pull to stretch the piece
         stretchByHands(a, b);
         return;
@@ -1376,6 +1449,7 @@ const Holo = (() => {
       return;
     }
     hand.zoom = null;
+    if (hand.imgZoom) { dropImg(hand.imgZoom.it); hand.imgZoom = null; }
     if (hand.stretch) endStretch();
     // Two hands that were closing in fast merged into one blob: that was a clap too
     if (before === 2 && count === 1) {
@@ -1387,15 +1461,37 @@ const Holo = (() => {
 
     // One hand: hover, pinch to tap, pinch and drag to rotate, flick to dismiss
     const hit = document.elementFromPoint(a.cx, a.cy);
-    setHover(isOpen ? null : panelAt(hit) ? hit.closest("[data-card], .ticker") : null);
-    if (a.pinch && a.pinchStart) {
+    const overImg = hit?.closest?.(".holo-img");
+    setHover(overImg || (isOpen ? null : panelAt(hit) ? hit.closest("[data-card], .ticker") : null));
+    if (a.pinchStart?.grab && !imgs.includes(a.pinchStart.grab)) a.pinchStart.grab = null;  // closed meanwhile
+    if (a.pinch && a.pinchStart && !a.ghost && a.pinchStart.grab) {  // carrying a picture
+      const p = a.pinchStart, it = p.grab;
+      if (!a.dragging && Math.hypot(a.cx - p.x, a.cy - p.y) > innerWidth * 0.015) { a.dragging = true; liftImg(it); }
+      if (a.dragging) { it.x += a.cx - p.lx; it.y += a.cy - p.ly; placeImg(it); armBin(overBin(a.cx, a.cy)); }
+      p.lx = a.cx; p.ly = a.cy;
+      return;
+    }
+    if (!a.pinch && a.wasPinch && a.pinchStart?.grab) {
+      const it = a.pinchStart.grab;
+      a.pinchStart = null;
+      dropImg(it);
+      if (a.ghostRelease) return;
+      if (a.dragging && overBin(a.cx, a.cy)) { trashImg(it); return; }
+      const peak = (a.vh || []).reduce((m, v) => (Math.hypot(v.vx, v.vy) > Math.hypot(m.vx, m.vy) ? v : m), { vx: 0, vy: 0 });
+      if (!a.dragging) togglePresent(it);
+      else if (Math.hypot(peak.vx, peak.vy) > innerWidth * 1.3) throwImg(it, peak.vx, peak.vy);
+      return;
+    }
+    if (a.pinch && a.pinchStart && !a.ghost) {
       const p = a.pinchStart;
       if (!a.dragging && Math.hypot(a.cx - p.x, a.cy - p.y) > innerWidth * 0.03) a.dragging = true;
-      if (a.dragging && isOpen) rotateBy((a.cx - p.lx) * 0.009, (a.cy - p.ly) * 0.007);
+      if (a.dragging && isOpen) { rotateBy((a.cx - p.lx) * 0.009, (a.cy - p.ly) * 0.007); armBin(overBin(a.cx, a.cy)); }
       p.lx = a.cx; p.ly = a.cy;
     }
     if (!a.pinch && a.wasPinch && a.pinchStart) {
-      if (!a.dragging && now - a.pinchStart.t < 700) tap(a.pinchStart.x, a.pinchStart.y);
+      if (!a.dragging && !a.ghostRelease && now - a.pinchStart.t < 700) tap(a.pinchStart.x, a.pinchStart.y);
+      else if (a.dragging && isOpen && !a.ghostRelease && overBin(a.cx, a.cy)) trashHolo();
+      armBin(false);
       a.pinchStart = null;
     }
     const tr = a.trail;
@@ -1438,8 +1534,11 @@ const Holo = (() => {
   function drawCam(landmarks) {
     const cv = el.camCanvas, ctx = cv.getContext("2d"), w = cv.width, h = cv.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.strokeStyle = css("--cyan");
-    ctx.fillStyle = css("--cyan-hi");
+    if (!hand.colors || performance.now() - hand.colors.t > 1000) {  // reading CSS every frame is slow; once a second is enough
+      hand.colors = { t: performance.now(), line: css("--cyan"), dot: css("--cyan-hi") };
+    }
+    ctx.strokeStyle = hand.colors.line;
+    ctx.fillStyle = hand.colors.dot;
     ctx.lineWidth = 1.5;
     for (const lm of landmarks) {
       ctx.beginPath();
@@ -1466,6 +1565,225 @@ const Holo = (() => {
   updateGestureButton();
   if (handsWanted() && !lowPowerOn()) setTimeout(startHands, 1500);
 
+  // ================= THE BIN: drag pictures and holograms into it to throw them away =================
+  // It shows while a hologram or a picture is up. Drop something on it (pinch-drag with a hand, or drag with the
+  // mouse) and it's sucked in; tap the bin to bring back the last thing thrown away.
+  let bin = null, lastTrashed = null;
+  function binEl() {
+    if (bin) return bin;
+    bin = document.createElement("button");
+    bin.id = "holo-bin";
+    bin.type = "button";
+    bin.title = "Drag a picture or a hologram here to throw it away. Tap to bring the last one back.";
+    bin.innerHTML = `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 14h28M19 14v-4h10v4M13 14l2 26h18l2-26M20 20v14M24 20v14M28 20v14"/></svg><span>BIN</span>`;
+    bin.onclick = restoreTrashed;
+    document.body.appendChild(bin);
+    return bin;
+  }
+  function updateBin() {
+    const b = binEl();
+    b.classList.toggle("show", isOpen || imgs.length > 0);
+    b.classList.toggle("has", !!lastTrashed);
+  }
+  function overBin(x, y) {
+    if (!bin?.classList.contains("show")) return false;
+    const r = bin.getBoundingClientRect(), m = 40;
+    return x > r.left - m && x < r.right + m && y > r.top - m && y < r.bottom + m;
+  }
+  function armBin(on) { bin?.classList.toggle("armed", !!on); }
+  function binCentre() {
+    const r = binEl().getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  function gulp() {
+    armBin(false);
+    bin.classList.remove("gulp"); void bin.offsetWidth; bin.classList.add("gulp");
+    beep(300, 0.08); setTimeout(() => beep(180, 0.12), 80);
+  }
+
+  function trashImg(it) {
+    lastTrashed = { kind: "image", images: [it.data] };
+    if (it.presented) togglePresent(it);
+    const c = binCentre();
+    it.el.classList.add("anim", "binned");
+    it.x = c.x; it.y = c.y; it.s = 0.08;
+    placeImg(it);
+    const i = imgs.indexOf(it);
+    if (i >= 0) imgs.splice(i, 1);
+    setTimeout(() => it.el.remove(), 450);
+    gulp();
+    updateBin();
+  }
+
+  function trashHolo() {
+    const s = spec();
+    if (!s) return;
+    lastTrashed = { kind: "holo", spec: s };
+    gulp();
+    close("bin");
+  }
+
+  function restoreTrashed() {
+    const t = lastTrashed;
+    if (!t) { beep(220, 0.05); return; }
+    lastTrashed = null;
+    if (t.kind === "image") showImages(t.images, false);
+    else open(t.spec.kind, t.spec.subject, null, t.spec.image, t.spec);
+    updateBin();
+  }
+
+  // ================= IMAGES: pictures floating over the HUD as glass cards =================
+  // "Show me a picture of..." puts the picture on a glass card over the HUD (it doesn't take over the screen).
+  // Hands: pinch a card and move to carry it, a quick pinch spotlights it (again to put it back), both hands
+  // pinching stretch it, and pinch-and-throw flings it away. Mouse: drag, wheel to resize, click to spotlight.
+  // (The glass-card feel was inspired by the barehands project by Jared Rhodenizer; this code is our own.)
+  const imgs = [];
+  let imgLayer = null, imgZ = 1;
+  function imageLayer() {
+    if (imgLayer) return imgLayer;
+    imgLayer = document.createElement("div");
+    imgLayer.id = "holo-images";
+    imgLayer.innerHTML = `<div class="hi-dim"></div>`;
+    imgLayer.querySelector(".hi-dim").onclick = () => { const p = imgs.find((i) => i.presented); if (p) togglePresent(p); };
+    document.body.appendChild(imgLayer);
+    return imgLayer;
+  }
+  function placeImg(it) {
+    it.el.style.transform = `translate3d(${it.x}px, ${it.y}px, 0) translate(-50%, -50%) scale(${it.s})`;
+    it.el.style.zIndex = it.presented ? 500 : it.z;
+  }
+  function liftImg(it) { it.el.classList.add("held"); it.el.classList.remove("anim"); it.z = ++imgZ; placeImg(it); }
+  function dropImg(it) { it.el.classList.remove("held"); }
+  function imageAt(x, y) {
+    const f = document.elementFromPoint(x, y)?.closest?.(".holo-img");
+    return f ? imgs.find((i) => i.el === f) || null : null;
+  }
+
+  function showImages(list, replace) {
+    build();
+    const layer = imageLayer();
+    if (replace) closeImages(true);
+    const n = Math.min(list.length, 4);
+    list.slice(0, n).forEach((im, i) => {
+      const f = document.createElement("figure");
+      f.className = "holo-img anim arriving";
+      f.innerHTML = `<button type="button" class="hi-x" title="Close">&times;</button><img alt="" draggable="false">
+        <figcaption><b></b><span></span></figcaption>`;
+      const img = f.querySelector("img");
+      img.alt = im.title || "Picture";
+      img.src = im.src;
+      f.querySelector("b").textContent = im.title || "";
+      f.querySelector("span").textContent = im.credit || "";
+      const gap = Math.min(0.3, 0.94 / n);  // share the width out, so several pictures sit side by side
+      f.style.setProperty("--hi-w", `${Math.round((n === 1 ? 0.4 : gap - 0.035) * 100)}vw`);
+      const it = { data: im, el: f, x: innerWidth * (0.5 + (i - (n - 1) / 2) * gap),
+                   y: innerHeight * 0.46 + (imgs.length % 3) * 24, s: 1, z: ++imgZ, presented: false };
+      img.onerror = () => { removeImg(it); addActivity(`Couldn't load the picture "${im.title || "picture"}".`, true); };
+      f.querySelector(".hi-x").onclick = (e) => { e.stopPropagation(); throwImg(it, 0, -1); };
+      imgPointer(it);
+      layer.appendChild(f);
+      imgs.push(it);
+      placeImg(it);
+      setTimeout(() => f.classList.remove("arriving"), 30);
+    });
+    while (imgs.length > 6) removeImg(imgs[0]);
+    updateBin();
+    beep(760, 0.05); setTimeout(() => beep(1140, 0.07), 70);
+    if (handsWanted() && !lowPowerOn()) startHands();
+  }
+
+  function removeImg(it) {
+    const i = imgs.indexOf(it);
+    if (i >= 0) imgs.splice(i, 1);
+    it.el.remove();
+    imgLayer?.classList.toggle("spot", imgs.some((x) => x.presented));
+    updateBin();
+  }
+
+  function throwImg(it, vx, vy) {
+    if (it.presented) togglePresent(it);
+    it.el.classList.add("anim", "thrown");
+    const sp = Math.hypot(vx, vy) || 1;
+    it.x += (vx / sp) * innerWidth * 0.8;
+    it.y += (vy / sp) * innerWidth * 0.8;
+    placeImg(it);
+    const i = imgs.indexOf(it);
+    if (i >= 0) imgs.splice(i, 1);
+    setTimeout(() => it.el.remove(), 450);
+    beep(500, 0.05);
+    updateBin();
+  }
+
+  // Spotlight: the picture flies to the middle, big, with everything else dimmed behind it
+  function togglePresent(it) {
+    it.el.classList.add("anim");
+    if (!it.presented) {
+      for (const o of imgs) if (o.presented && o !== it) togglePresent(o);
+      it.home = { x: it.x, y: it.y, s: it.s };
+      const box = it.el.getBoundingClientRect(), w = box.width / it.s, h = box.height / it.s;
+      it.x = innerWidth / 2; it.y = innerHeight / 2;
+      it.s = clamp(Math.min(innerWidth * 0.82 / w, innerHeight * 0.82 / h), 1, 4);
+      it.presented = true;
+      beep(880, 0.06);
+    } else {
+      Object.assign(it, it.home || {}, { presented: false });
+      beep(620, 0.05);
+    }
+    it.el.classList.toggle("presented", it.presented);
+    imgLayer.classList.toggle("spot", imgs.some((x) => x.presented));
+    placeImg(it);
+  }
+
+  function closeImages(quiet) {
+    for (const it of imgs.slice()) quiet ? removeImg(it) : throwImg(it, 0, 1);
+    imgLayer?.classList.remove("spot");
+  }
+
+  function imgPointer(it) {
+    const f = it.el;
+    let d = null;
+    f.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".hi-x")) return;
+      d = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, t: performance.now(), v: [] };
+      f.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    f.addEventListener("pointermove", (e) => {
+      if (!d) return;
+      const now = performance.now();
+      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 5) { d.moved = true; liftImg(it); }
+      if (!d.moved) return;
+      const dt = Math.max(1, now - d.t) / 1000;
+      d.v.push({ t: now, vx: (e.clientX - d.x) / dt, vy: (e.clientY - d.y) / dt });
+      while (d.v.length && now - d.v[0].t > 120) d.v.shift();
+      it.x += e.clientX - d.x; it.y += e.clientY - d.y;
+      d.x = e.clientX; d.y = e.clientY; d.t = now;
+      placeImg(it);
+      armBin(overBin(e.clientX, e.clientY));
+    });
+    const end = (e) => {
+      if (!d) return;
+      dropImg(it);
+      const last = d.v[d.v.length - 1];
+      if (d.moved && overBin(e.clientX, e.clientY)) trashImg(it);
+      else if (!d.moved) togglePresent(it);
+      else if (last && performance.now() - last.t < 80 && Math.hypot(last.vx, last.vy) > 2600) throwImg(it, last.vx, last.vy);
+      d = null;
+    };
+    f.addEventListener("pointerup", end);
+    f.addEventListener("pointercancel", end);
+    f.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      it.el.classList.remove("anim");
+      it.s = clamp(it.s * Math.exp(-e.deltaY * 0.0015), 0.3, 4);
+      placeImg(it);
+    }, { passive: false });
+  }
+  addEventListener("keydown", (e) => {
+    const p = imgs.find((i) => i.presented);
+    if (e.key === "Escape" && p) togglePresent(p);
+  });
+
   // ---------- from Jarvis (voice commands) ----------
   function handle(ev) {
     switch (ev.action) {
@@ -1485,6 +1803,9 @@ const Holo = (() => {
       }
       case "video": showVideo(ev.id, ev.title); break;
       case "video_close": closeVideo(); break;
+      case "image": showImages(ev.images || [], ev.replace !== false); break;
+      case "image_close": closeImages(); break;
+      case "restore": restoreTrashed(); break;
       case "close": close(); break;
       case "expand": expand(ev.target); break;
       case "collapse": collapse(); break;

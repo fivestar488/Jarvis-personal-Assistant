@@ -8,8 +8,10 @@ Three kinds (drawn by web/holo.js):
 Hand gestures are tracked by the browser from the webcam; no video leaves the PC.
 """
 import json
+import os
 import re
 import urllib.request
+from pathlib import Path
 
 from . import config, tools
 from .tools import S, tool
@@ -116,7 +118,7 @@ def control(action, target=""):
             "color": f"Recoloured{' ' + target if target else ''}, sir.", "save": "Saved to your workspace, sir.",
             "throw": "Sent to your phone, sir.",
             "gestures_on": "Hand control is on. The camera light will stay on while it's running.",
-            "gestures_off": "Hand control is off."}.get(action, "Done.")
+            "gestures_off": "Hand control is off.", "restore": "Brought it back out of the bin, sir."}.get(action, "Done.")
 
 
 @tool("Open a 3D hologram on the HUD that he controls with his hands (clap or spread hands to expand, pinch and "
@@ -134,10 +136,11 @@ def show_hologram(subject, parts=None):
 
 @tool("Change the hologram on the HUD: close it, expand (a named part, or the selected one), collapse it, zoom, "
       "rotate, reset the view, wireframe / x-ray / solid view, recolour it (target = a colour), save it to his "
-      "workspace (target = a name), throw it to his phone, or turn webcam hand control on/off.",
+      "workspace (target = a name), throw it to his phone, turn webcam hand control on/off, or restore (bring "
+      "back the last picture or hologram he threw in the bin).",
       {"action": {"type": "string", "enum": ["close", "expand", "collapse", "zoom_in", "zoom_out", "rotate", "reset",
                                              "wireframe", "xray", "solid", "color", "save", "throw",
-                                             "gestures_on", "gestures_off"]},
+                                             "gestures_on", "gestures_off", "restore"]},
        "target": S("For expand: the part's name. For color: the colour. For save: a name for it.")},
       ["action"])
 def hologram_control(action, target=""):
@@ -216,6 +219,149 @@ def show_video(query="", close=False):
     if not _send({"action": "video", "id": vid, "title": query}):
         return "The video pane needs the HUD open. Start Jarvis with jarvis.bat."
     return f"On screen, sir: {query}."
+
+
+# ---------- pictures on glass cards over the HUD (web/holo.js "IMAGES") ----------
+IMG_UA = {"User-Agent": "JARVIS-desktop-assistant/1.0 (open-source personal assistant)"}
+IMG_TYPES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+
+def _wiki_json(host, params):
+    import urllib.parse
+    url = f"https://{host}/w/api.php?" + urllib.parse.urlencode({"format": "json", "formatversion": 2, **params})
+    req = urllib.request.Request(url, headers=IMG_UA)
+    return json.loads(urllib.request.urlopen(req, timeout=12).read().decode("utf-8"))
+
+
+def find_web_images(query, count=1):
+    """Pictures of a subject: the main photo of its best Wikipedia article first, then Wikimedia Commons photos.
+    Free, no key, and the pictures are openly licensed."""
+    found, seen = [], set()
+
+    def add(src, title, credit):
+        import urllib.parse
+        # the same photo comes back at different sizes ("1280px-Name.jpg" and "Name.jpg"): compare the file name
+        key = re.sub(r"^\d+px-", "", urllib.parse.unquote((src or "").split("?")[0].rsplit("/", 1)[-1])).lower()
+        if src and key not in seen:
+            seen.add(key)
+            found.append({"src": src, "title": title, "credit": credit})
+
+    try:
+        data = _wiki_json("en.wikipedia.org", {"action": "query", "generator": "search", "gsrsearch": query,
+                                               "gsrlimit": 4, "prop": "pageimages", "piprop": "thumbnail",
+                                               "pithumbsize": 1280, "redirects": 1})
+        pages = sorted(data.get("query", {}).get("pages", []), key=lambda p: p.get("index", 99))
+        for p in pages[:1]:  # the subject's own article; more pictures come from Commons
+            add((p.get("thumbnail") or {}).get("source"), p.get("title", query), "Wikipedia")
+    except Exception:
+        pass
+    if len(found) < count:
+        try:
+            data = _wiki_json("commons.wikimedia.org", {"action": "query", "generator": "search",
+                                                        "gsrsearch": f"{query} filetype:bitmap", "gsrnamespace": 6,
+                                                        "gsrlimit": 8, "prop": "imageinfo", "iiprop": "url|mime",
+                                                        "iiurlwidth": 1280})
+            pages = sorted(data.get("query", {}).get("pages", []), key=lambda p: p.get("index", 99))
+            for p in pages:
+                info = (p.get("imageinfo") or [{}])[0]
+                if info.get("mime", "").startswith("image/") and len(found) < count:
+                    add(info.get("thumburl") or info.get("url"), query, "Wikimedia Commons")
+        except Exception:
+            pass
+    return found[:count]
+
+
+def _picture_folders():
+    home = Path.home()
+    names = ["Pictures", "Desktop", "Downloads", "OneDrive/Pictures", "OneDrive/Desktop"]
+    return [home / n for n in names if (home / n).is_dir()]
+
+
+def find_local_image(name):
+    """An image file by path, or by words in its name from Pictures, Desktop and Downloads."""
+    p = Path(os.path.expandvars(os.path.expanduser(name.strip().strip('"'))))
+    if p.is_file() and p.suffix.lower() in IMG_TYPES:
+        return p
+    words = [w for w in re.findall(r"[a-z0-9]+", name.lower()) if w not in {"the", "a", "my", "picture", "photo", "image", "of"}]
+    if not words:
+        return None
+    best, scanned = None, 0
+    for folder in _picture_folders():
+        for root, dirs, files in os.walk(folder):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for f in files:
+                scanned += 1
+                if scanned > 20000:
+                    return best
+                fp = Path(root) / f
+                if fp.suffix.lower() not in IMG_TYPES or not all(w in f.lower() for w in words):
+                    continue
+                try:
+                    attrs = getattr(fp.stat(), "st_file_attributes", 0)
+                    if attrs & 0x400000 or attrs & 0x1000:  # OneDrive "online-only": don't download it
+                        continue
+                    if best is None or fp.stat().st_mtime > best.stat().st_mtime:
+                        best = fp
+                except OSError:
+                    pass
+    return best
+
+
+def local_image_data(path):
+    """A picture file shrunk to at most 1600px and packed into a data: URL, so it never needs serving from disk."""
+    import base64
+    import io
+    from PIL import Image
+    with Image.open(path) as im:
+        im.thumbnail((1600, 1600))
+        out = io.BytesIO()
+        if im.mode in ("RGBA", "LA", "P"):
+            im.convert("RGBA").save(out, "PNG", optimize=True)
+            mime = "image/png"
+        else:
+            im.convert("RGB").save(out, "JPEG", quality=86)
+            mime = "image/jpeg"
+    return f"data:{mime};base64," + base64.b64encode(out.getvalue()).decode()
+
+
+@tool("Show pictures on the HUD as floating glass cards he can grab, move, stretch, spotlight or throw away with his "
+      "hands (or the mouse). Use this whenever he asks to see a picture, photo or image of something, e.g. 'show me a "
+      "picture of the Eiffel Tower', 'show me 3 photos of red pandas', 'bring up the photo of my dog on my desktop'. "
+      "query finds openly licensed photos online; file shows a picture from his PC (a path, or words from its file "
+      "name); url shows one specific https image link. add=true keeps the pictures already up. close=true clears them.",
+      {"query": S("What the picture is of"), "count": {"type": "integer", "description": "How many pictures (1-4)"},
+       "file": S("A picture on his PC: a full path, or words from its file name"),
+       "url": S("A direct https link to an image"), "add": {"type": "boolean"}, "close": {"type": "boolean"}})
+def show_image(query="", count=1, file="", url="", add=False, close=False):
+    if close:
+        return "Pictures cleared." if _send({"action": "image_close"}) else "There's no HUD open."
+    count = max(1, min(4, int(count or 1)))
+    if file:
+        path = find_local_image(file)
+        if not path:
+            return f"I couldn't find a picture called {file} in Pictures, Desktop or Downloads, sir."
+        try:
+            images = [{"src": local_image_data(path), "title": path.stem, "credit": path.parent.name}]
+        except Exception as e:
+            return f"I found {path.name} but couldn't open it: {e}"
+    elif url:
+        if not url.startswith("https://"):
+            return "I can only show https image links."
+        images = [{"src": url, "title": query, "credit": re.sub(r"^https://(www\.)?([^/]+).*", r"\2", url)}]
+    else:
+        if not query:
+            return "What would you like a picture of?"
+        try:
+            images = find_web_images(query, count)
+        except Exception:
+            images = []
+        if not images:
+            return f"I couldn't find a picture of {query}, sir."
+    if not _send({"action": "image", "images": images, "replace": not add}):
+        return "Pictures need the HUD open. Start Jarvis with jarvis.bat."
+    what = images[0]["title"] if file else (query or images[0]["title"])
+    n = len(images)
+    return f"On screen, sir: {n} pictures of {what}." if n > 1 else f"On screen, sir: {what}."
 
 
 # ---------- the parts of a topic, for the "expand" step ----------

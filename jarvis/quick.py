@@ -485,9 +485,17 @@ def _suit(t):
          or re.fullmatch(r"(?:play|show)(?: me)? (?:the )?(.+?) trailer", t))
     if m:
         return hologram.show_video(f"{m.group(1)} trailer")
+    # "show me a picture of X" / "show me 3 photos of X": no AI needed
+    m = re.fullmatch(r"(?:show|bring up|pull up|find)(?: me)?(?: an?| some| (\d))? (?:pictures?|photos?|images?|pics?) of (.+)", t)
+    if m:
+        return hologram.show_image(m.group(2), count=int(m.group(1) or (3 if re.search(r"(pictures|photos|images|pics) of", t) else 1)))
     m = re.fullmatch(r"(?:play|show)(?: me)? (?:a |the )?video (?:of|about|on|showing) (.+)", t)
     if m:
         return hologram.show_video(m.group(1))
+    if re.fullmatch(r"(?:close|clear|hide)(?: the| all)?(?: the)? (?:pictures?|photos?|images?)", t):
+        return hologram.show_image(close=True)
+    if re.fullmatch(r"(?:bring (?:it|that) back|get (?:it|that) (?:back )?out of the bin|restore (?:it|that|the last one))", t):
+        return hologram.hologram_control("restore")
     if re.fullmatch(r"(?:close|stop|hide)(?: the)? video(?: pane)?", t):
         return hologram.show_video(close=True)
     return None

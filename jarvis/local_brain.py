@@ -55,6 +55,7 @@ TOOL_GROUPS = [
     (r"wrap.?up|end of (the )?day|weekly review|how was my (day|week)", ["wrap_up"]),
     (r"i copied|clipboard history|copied earlier", ["clipboard_history"]),
     (r"trailer|video", ["show_video"]),
+    (r"picture|photo|image|pic of", ["show_image"]),
     (r"workspace", ["hologram_workspace"]),
     (r"low power|battery|power sav", ["set_low_power"]),
     (r"\b(listening|microphone|mic)\b", ["set_listening_paused"]),
@@ -97,7 +98,7 @@ SAY_RESULT = {"set_reminder", "cancel_reminder", "acknowledge_reminder", "open_a
               "set_low_power", "set_listening_paused", "set_captions", "meeting_mode", "log_meal",
               "meals_today", "credit_estimate", "status_report", "run_protocol", "mood_mode", "tile_windows",
               "perimeter_report", "ask_my_files", "index_my_files", "activity_journal", "wrap_up", "clipboard_history",
-              "show_video", "hologram_workspace", "whats_this", "show_my_data", "situation_report", "run_simulation",
+              "show_video", "show_image", "hologram_workspace", "whats_this", "show_my_data", "situation_report", "run_simulation",
               "trip", "game_mode", "break_reminders", "standing_orders", "offline_wake_word", "status_strip",
               "flashcards", "sculpt_hologram", "demo_tour", "setup_check", "tell_me_when", "packages", "subscriptions",
               "when_to_leave", "daily_note"}

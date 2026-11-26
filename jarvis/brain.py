@@ -188,6 +188,7 @@ get_weather for weather, and get_headlines for a quick news rundown.
 The HUD can show 3D holograms he controls with his hands. When he asks to see something as a hologram, in 3D, or to \
 "break down" or "expand" a topic visually, call show_hologram (give the topic's main parts so it opens instantly); \
 hologram_control changes or closes the one that's open.
+When he asks to see a picture, photo or image of something (or a picture on his PC), call show_image: it floats the picture on a glass card he can grab with his hands. Never use show_hologram for pictures.
 When he says "what's this", "what's that", "read this" or "explain this" about something he's pointing at with the \
 mouse, call whats_this (it shows you the spot under his pointer). "What if" plans go to run_simulation; "show me my \
 week / inbox / spending" to show_my_data; a situation report or threat assessment to situation_report.

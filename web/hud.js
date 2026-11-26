@@ -21,6 +21,17 @@ applyTheme(store.get("jarvis-theme") || "mark");
 document.getElementById("btn-theme").onclick = () =>
   applyTheme(document.documentElement.dataset.theme === "mark" ? "jarvis" : "mark");
 
+// ---------- view: "clean" (just the reactor, the conversation and the command line) or "full" (every panel) ----------
+function applyView(name) {
+  document.body.classList.toggle("clean", name === "clean");
+  const btn = document.getElementById("btn-view");
+  if (btn) btn.textContent = name === "clean" ? "VIEW: CLEAN" : "VIEW: FULL";
+  store.set("jarvis-view", name);
+}
+applyView(store.get("jarvis-view") || "clean");
+document.getElementById("btn-view").onclick = () =>
+  applyView(document.body.classList.contains("clean") ? "full" : "clean");
+
 // ---------- elements ----------
 const reactor = $("#reactor"), stateLabel = $("#state-label"), subtitle = $("#subtitle");
 const logEl = $("#log"), activityEl = $("#activity"), input = $("#input"), micBtn = $("#btn-mic");
